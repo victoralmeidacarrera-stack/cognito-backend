@@ -1,0 +1,39 @@
+name: cognito-backend
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: cognito-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: cognito
+      POSTGRES_PASSWORD: cognito
+      POSTGRES_DB: cognito
+    ports:
+      - '5432:5432'
+    volumes:
+      - cognito-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U cognito -d cognito']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: cognito-redis
+    restart: unless-stopped
+    command: ['redis-server', '--appendonly', 'yes', '--maxmemory-policy', 'noeviction']
+    ports:
+      - '6379:6379'
+    volumes:
+      - cognito-redisdata:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  cognito-pgdata:
+  cognito-redisdata:

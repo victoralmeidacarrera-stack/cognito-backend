@@ -1,0 +1,505 @@
+// Cognito AI — schema de domínio
+// SaaS de automação de criativos para Instagram (concessionárias de veículos).
+// Multi-tenant: TODAS as entidades de negócio carregam organizationId.
+// O isolamento é reforçado em runtime por uma Prisma extension (Fase 2).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ──────────────────────────────────────────────
+// Enums
+// ──────────────────────────────────────────────
+
+enum Plan {
+  STARTER
+  GROWTH
+  PRO
+  ENTERPRISE
+}
+
+enum UserRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+enum CreativeFormat {
+  FEED
+  STORIES
+}
+
+enum CampaignStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+}
+
+enum BriefingStatus {
+  DRAFT
+  GENERATING
+  GENERATED
+  FAILED
+}
+
+enum CreativeStatus {
+  PENDING
+  COPY_READY
+  RENDERING
+  RENDERED
+  FAILED
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum PhotoKind {
+  EXTERIOR
+  INTERIOR
+  DETAIL
+  BACKGROUND
+  LOGO
+  OTHER
+}
+
+enum JobType {
+  GENERATE_CREATIVE
+  RENDER_IMAGE
+  SEND_EMAIL
+}
+
+enum JobStatus {
+  QUEUED
+  ACTIVE
+  COMPLETED
+  FAILED
+}
+
+enum UsageKind {
+  VARIATION_GENERATED
+  AI_TOKENS
+  IMAGE_RENDER
+}
+
+// ──────────────────────────────────────────────
+// 1. Organization — raiz do tenant
+// ──────────────────────────────────────────────
+
+model Organization {
+  id   String @id @default(cuid())
+  name String
+  slug String @unique
+
+  plan Plan @default(STARTER)
+
+  // Overrides de quota (usados sobretudo no Enterprise sob consulta).
+  // Quando null, vale o default do plano (src/config/plans.ts).
+  customMonthlyVariations     Int?
+  customVariationsPerBriefing Int?
+
+  // Restrições da fábrica = JSON livre por org (ex.: termos proibidos,
+  // regras de preço, disclaimers obrigatórios da montadora).
+  factoryRestrictions Json @default("{}")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users      User[]
+  brandBooks BrandBook[]
+  vehicles   Vehicle[]
+  photos     Photo[]
+  campaigns  Campaign[]
+  briefings  Briefing[]
+  templates  Template[]
+  jobs       Job[]
+  creatives  Creative[]
+  approvals  Approval[]
+  usageLogs  UsageLog[]
+
+  @@index([plan])
+  @@map("organizations")
+}
+
+// ──────────────────────────────────────────────
+// 2. User — pertence à org, autenticado via Clerk
+// ──────────────────────────────────────────────
+
+model User {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  clerkUserId String   @unique
+  email       String
+  name        String?
+  role        UserRole @default(MEMBER)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  briefingsCreated Briefing[] @relation("BriefingCreatedBy")
+  approvals        Approval[] @relation("ApprovalDecidedBy")
+
+  @@unique([organizationId, email])
+  @@index([organizationId])
+  @@map("users")
+}
+
+// ──────────────────────────────────────────────
+// 3. BrandBook — identidade de marca da org.
+// O bloco `guidelines` é o conteúdo estável enviado com prompt caching
+// obrigatório ao Anthropic (cache hit no briefing principal).
+// ──────────────────────────────────────────────
+
+model BrandBook {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  name     String
+  isActive Boolean @default(true)
+
+  // Identidade visual
+  primaryColor   String?
+  secondaryColor String?
+  accentColor    String?
+  palette        Json    @default("[]") // string[] de hex extras
+  typography     Json    @default("{}") // { heading, body, ... }
+  logoR2Key      String?
+
+  // Tom de voz / diretrizes — bloco grande e estável (prompt caching)
+  toneOfVoice String? @db.Text
+  guidelines  String? @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  briefings Briefing[]
+
+  @@index([organizationId])
+  @@index([organizationId, isActive])
+  @@map("brand_books")
+}
+
+// ──────────────────────────────────────────────
+// 4. Vehicle — veículo do estoque da concessionária
+// ──────────────────────────────────────────────
+
+model Vehicle {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  make         String // marca (montadora)
+  model        String
+  trim         String? // versão
+  year         Int
+  modelYear    Int?
+  priceCents   Int? // preço em centavos (BRL)
+  mileageKm    Int?
+  color        String?
+  fuel         String?
+  transmission String?
+  plateEnding  String? // final de placa
+  condition    String  @default("NEW") // NEW | USED
+  highlights   Json    @default("[]") // string[] de diferenciais
+  externalId   String? // id no DMS/ERP da concessionária
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  photos    Photo[]
+  briefings Briefing[]
+
+  @@index([organizationId])
+  @@index([organizationId, make, model])
+  @@map("vehicles")
+}
+
+// ──────────────────────────────────────────────
+// 5. Photo — foto de veículo (ou asset), armazenada no R2
+// ──────────────────────────────────────────────
+
+model Photo {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  vehicleId String?
+  vehicle   Vehicle? @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  kind     PhotoKind @default(EXTERIOR)
+  r2Key    String    @unique
+  url      String?
+  width    Int?
+  height   Int?
+  bytes    Int?
+  mimeType String?
+  position Int       @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([organizationId])
+  @@index([vehicleId])
+  @@map("photos")
+}
+
+// ──────────────────────────────────────────────
+// 6. Campaign — agrupa briefings/criativos por objetivo
+// ──────────────────────────────────────────────
+
+model Campaign {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  name        String
+  description String?         @db.Text
+  status      CampaignStatus  @default(DRAFT)
+  format      CreativeFormat?
+  startsAt    DateTime?
+  endsAt      DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  briefings Briefing[]
+
+  @@index([organizationId])
+  @@index([organizationId, status])
+  @@map("campaigns")
+}
+
+// ──────────────────────────────────────────────
+// 7. Briefing — entrada do cliente + saída estruturada do Claude
+// ──────────────────────────────────────────────
+
+model Briefing {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  campaignId String
+  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  brandBookId String?
+  brandBook   BrandBook? @relation(fields: [brandBookId], references: [id], onDelete: SetNull)
+
+  vehicleId String?
+  vehicle   Vehicle? @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
+
+  createdById String?
+  createdBy   User?   @relation("BriefingCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  title  String
+  format CreativeFormat @default(FEED)
+  status BriefingStatus @default(DRAFT)
+
+  // Entrada livre do cliente (objetivo, oferta, condições, observações)
+  input Json @default("{}")
+
+  // Quantas variações pedir nesta geração (validado contra a quota)
+  requestedVariations Int @default(6)
+
+  // Saída estruturada do Claude (schema validado por zod antes de persistir)
+  aiOutput Json?
+
+  // Idempotência do POST /briefings/:id/generate
+  idempotencyKey String?
+
+  generatedAt  DateTime?
+  failedAt     DateTime?
+  errorMessage String?   @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  creatives Creative[]
+  jobs      Job[]
+  usageLogs UsageLog[]
+
+  @@unique([organizationId, idempotencyKey])
+  @@index([organizationId])
+  @@index([campaignId])
+  @@index([organizationId, status])
+  @@map("briefings")
+}
+
+// ──────────────────────────────────────────────
+// 8. Template — molde HTML Handlebars versionado (feed/stories)
+// Aponta para um arquivo em /templates; guarda metadados + schema de vars.
+// ──────────────────────────────────────────────
+
+model Template {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  name     String
+  slug     String // identifica o arquivo em /templates/<format>/<slug>.hbs
+  format   CreativeFormat
+  version  Int            @default(1)
+  isActive Boolean        @default(true)
+
+  // Dimensões de render (px). Feed 1080x1350, Stories 1080x1920.
+  width  Int @default(1080)
+  height Int @default(1350)
+
+  // JSON Schema das variáveis que o template aceita (validação no render)
+  variablesSchema Json    @default("{}")
+  thumbnailR2Key  String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  creatives Creative[]
+
+  @@unique([organizationId, slug, version])
+  @@index([organizationId])
+  @@index([organizationId, format, isActive])
+  @@map("templates")
+}
+
+// ──────────────────────────────────────────────
+// 9. Job — espelho de persistência de um job BullMQ
+// ──────────────────────────────────────────────
+
+model Job {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  briefingId String?
+  briefing   Briefing? @relation(fields: [briefingId], references: [id], onDelete: SetNull)
+
+  type      JobType
+  status    JobStatus @default(QUEUED)
+  queue     String
+  bullJobId String? // id do job na fila BullMQ
+
+  payload      Json    @default("{}")
+  attempts     Int     @default(0)
+  errorMessage String? @db.Text
+
+  startedAt  DateTime?
+  finishedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([organizationId])
+  @@index([organizationId, status])
+  @@index([bullJobId])
+  @@map("jobs")
+}
+
+// ──────────────────────────────────────────────
+// 10. Creative — variação gerada (1 template + 1 copy pareados)
+// ──────────────────────────────────────────────
+
+model Creative {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  briefingId String
+  briefing   Briefing @relation(fields: [briefingId], references: [id], onDelete: Cascade)
+
+  templateId String?
+  template   Template? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+
+  format         CreativeFormat
+  status         CreativeStatus @default(PENDING)
+  variationIndex Int            @default(0)
+
+  // Copy estruturada (subset do schema de saída do Claude para esta variação)
+  copy Json @default("{}")
+
+  // Resultado do render
+  imageR2Key String?
+  imageUrl   String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  approval Approval?
+
+  @@unique([briefingId, variationIndex])
+  @@index([organizationId])
+  @@index([briefingId])
+  @@index([organizationId, status])
+  @@map("creatives")
+}
+
+// ──────────────────────────────────────────────
+// 11. Approval — cliente self-service aprova/rejeita o próprio criativo
+// ──────────────────────────────────────────────
+
+model Approval {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  creativeId String   @unique
+  creative   Creative @relation(fields: [creativeId], references: [id], onDelete: Cascade)
+
+  decidedById String?
+  decidedBy   User?   @relation("ApprovalDecidedBy", fields: [decidedById], references: [id], onDelete: SetNull)
+
+  status ApprovalStatus @default(PENDING)
+  note   String?        @db.Text
+
+  decidedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([organizationId])
+  @@index([organizationId, status])
+  @@map("approvals")
+}
+
+// ──────────────────────────────────────────────
+// 12. UsageLog — trilha de consumo para quota e billing
+// ──────────────────────────────────────────────
+
+model UsageLog {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  briefingId String?
+  briefing   Briefing? @relation(fields: [briefingId], references: [id], onDelete: SetNull)
+
+  kind UsageKind
+
+  // Janela mensal de quota no formato YYYY-MM (facilita agregação)
+  period String
+
+  // Contagem de unidades (ex.: nº de variações geradas neste evento)
+  quantity Int @default(1)
+
+  // Telemetria de IA (quando aplicável)
+  model            String?
+  inputTokens      Int?
+  outputTokens     Int?
+  cacheReadTokens  Int?
+  cacheWriteTokens Int?
+  costMicrocents   Int? // custo estimado em micro-centavos de USD (precisão sem float)
+
+  createdAt DateTime @default(now())
+
+  @@index([organizationId])
+  @@index([organizationId, period])
+  @@index([organizationId, kind, period])
+  @@map("usage_logs")
+}

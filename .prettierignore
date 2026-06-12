@@ -1,0 +1,8 @@
+dist
+node_modules
+prisma/migrations
+templates
+*.hbs
+pnpm-lock.yaml
+package-lock.json
+coverage

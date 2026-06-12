@@ -1,0 +1,9 @@
+# Normaliza fim de linha para LF no repositório (consistência cross-platform).
+* text=auto eol=lf
+
+# Binários — não tocar.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.ico binary
