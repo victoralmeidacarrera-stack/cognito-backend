@@ -98,6 +98,9 @@ model Organization {
   name String
   slug String @unique
 
+  // Mapeia a Organization do Clerk (provisionamento via webhook).
+  clerkOrgId String? @unique
+
   plan Plan @default(STARTER)
 
   // Overrides de quota (usados sobretudo no Enterprise sob consulta).

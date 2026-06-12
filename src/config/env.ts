@@ -40,6 +40,14 @@ const envSchema = z.object({
   // Clerk
   CLERK_SECRET_KEY: z.string().optional(),
   CLERK_PUBLISHABLE_KEY: z.string().optional(),
+  CLERK_WEBHOOK_SIGNING_SECRET: z.string().optional(),
+
+  // Auth: em dev, permite bypass do Clerk (resolve a org/admin demo ou os
+  // headers x-dev-org-id / x-dev-user-id). Forçado off em produção.
+  AUTH_DEV_BYPASS: z.enum(['true', 'false']).optional(),
+
+  // Puppeteer: caminho do Chromium em prod (Railway). Vazio = bundled.
+  PUPPETEER_EXECUTABLE_PATH: z.string().optional(),
 
   // Sentry
   SENTRY_DSN: z.string().url().optional(),
@@ -67,3 +75,6 @@ export type Env = typeof env;
 export const isProduction = env.NODE_ENV === 'production';
 export const isDevelopment = env.NODE_ENV === 'development';
 export const isTest = env.NODE_ENV === 'test';
+
+// Bypass de auth: nunca em produção; em dev/test o default é ligado.
+export const authDevBypass = !isProduction && (env.AUTH_DEV_BYPASS ?? 'true') === 'true';

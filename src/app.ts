@@ -5,6 +5,7 @@ import { fastify, type FastifyInstance } from 'fastify';
 import { loggerOptions } from './config/logger.js';
 import { registerErrorHandler } from './shared/middleware/error-handler.js';
 import { registerHealthRoutes } from './modules/health/health.routes.js';
+import { registerRoutes } from './routes.js';
 
 /**
  * Monta a instância Fastify com plugins base, error handler e rotas.
@@ -26,8 +27,9 @@ export async function buildApp(): Promise<FastifyInstance> {
   // Tratamento de erros global (antes das rotas)
   registerErrorHandler(app);
 
-  // Rotas (Fase 1: apenas health; demais módulos entram na Fase 2)
+  // Rotas: health (público) + webhooks + API v1 autenticada
   registerHealthRoutes(app);
+  await registerRoutes(app);
 
   return app;
 }

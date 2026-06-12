@@ -1,4 +1,4 @@
-import { S3Client } from '@aws-sdk/client-s3';
+import { PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import { env } from './env.js';
 
 // Cloudflare R2 é S3-compatível. O endpoint usa o account id.
@@ -22,4 +22,21 @@ export const R2_BUCKET = env.R2_BUCKET;
 export function r2PublicUrl(key: string): string | null {
   if (!env.R2_PUBLIC_URL) return null;
   return `${env.R2_PUBLIC_URL.replace(/\/$/, '')}/${key.replace(/^\//, '')}`;
+}
+
+/** Sobe um buffer para o R2 e devolve a chave + URL pública (se houver). */
+export async function uploadBuffer(input: {
+  key: string;
+  body: Buffer;
+  contentType: string;
+}): Promise<{ key: string; url: string | null }> {
+  await r2.send(
+    new PutObjectCommand({
+      Bucket: R2_BUCKET,
+      Key: input.key,
+      Body: input.body,
+      ContentType: input.contentType,
+    }),
+  );
+  return { key: input.key, url: r2PublicUrl(input.key) };
 }

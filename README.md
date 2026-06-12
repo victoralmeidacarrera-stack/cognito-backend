@@ -45,25 +45,57 @@ docker compose up -d
 npm install
 
 # 4. Banco
-npm run prisma:migrate   # cria as tabelas
+npm run prisma:deploy    # aplica a migration baseline (0_init)
 npm run db:seed          # org demo + admin + brand book
 
-# 5. Dev
-npm run dev              # http://localhost:3333/health
+# 5. App (2 processos)
+npm run dev              # API   → http://localhost:3333/health
+npm run worker           # workers BullMQ (geração, render, email)
 ```
+
+> Sem Clerk configurado em dev, a API usa **bypass de auth** (`AUTH_DEV_BYPASS`):
+> as rotas resolvem o admin/org do seed. Force outra org/usuário com os headers
+> `x-dev-org-id` / `x-dev-user-id`.
 
 ## Scripts
 
-| Script                  | Ação                              |
-| ----------------------- | --------------------------------- |
-| `npm run dev`           | Server com hot-reload (tsx watch) |
-| `npm run build`         | Compila para `dist/`              |
-| `npm run start`         | Roda o build                      |
-| `npm run typecheck`     | `tsc --noEmit`                    |
-| `npm run lint`          | ESLint                            |
-| `npm run format`        | Prettier                          |
-| `npm run prisma:studio` | UI do banco                       |
-| `npm run db:seed`       | Popula dados demo                 |
+| Script                  | Ação                           |
+| ----------------------- | ------------------------------ |
+| `npm run dev`           | API com hot-reload (tsx watch) |
+| `npm run worker`        | Workers BullMQ com hot-reload  |
+| `npm run build`         | Compila para `dist/`           |
+| `npm run start`         | Roda a API buildada            |
+| `npm run worker:start`  | Roda os workers buildados      |
+| `npm run typecheck`     | `tsc --noEmit`                 |
+| `npm run lint`          | ESLint                         |
+| `npm run format`        | Prettier                       |
+| `npm run prisma:deploy` | Aplica migrations              |
+| `npm run prisma:studio` | UI do banco                    |
+| `npm run db:seed`       | Popula dados demo              |
+
+## API (v1)
+
+Tudo sob `/api/v1`, autenticado (Clerk bearer ou bypass de dev).
+
+| Método | Rota                      | Descrição                         |
+| ------ | ------------------------- | --------------------------------- |
+| POST   | `/brand-books`            | cria brand book                   |
+| GET    | `/brand-books`            | lista                             |
+| POST   | `/vehicles`               | cadastra veículo                  |
+| GET    | `/vehicles`               | lista (paginado)                  |
+| POST   | `/campaigns`              | cria campanha                     |
+| GET    | `/templates`              | lista templates (feed/stories)    |
+| POST   | `/briefings`              | cria briefing                     |
+| POST   | `/briefings/:id/generate` | dispara geração (Idempotency-Key) |
+| GET    | `/creatives?briefingId=`  | lista criativos + aprovação       |
+| POST   | `/creatives/:id/decision` | aprova/rejeita (self-service)     |
+| GET    | `/usage/quota`            | consumo do mês + limites do plano |
+| POST   | `/webhooks/clerk`         | provisionamento (svix, sem auth)  |
+
+Fluxo de geração: `POST /briefings/:id/generate` → checa quota → enfileira
+`generate-creative` (Claude Sonnet + prompt caching no BrandBook) → cria 1
+`Creative` por variação → enfileira `render-image` (Handlebars → Puppeteer →
+PNG → R2) → cria `Approval` pendente.
 
 ## Health checks
 
@@ -84,6 +116,9 @@ npm run dev              # http://localhost:3333/health
 
 ## Roadmap
 
-- **Fase 1 (atual):** scaffolding, schema, config, health. ✅
-- **Fase 2:** módulos de negócio, Clerk, generation (Claude + caching),
-  workers (BullMQ), render (Puppeteer), R2, aprovações, quotas.
+- **Fase 1:** scaffolding, schema, config, health. ✅
+- **Fase 2:** auth (Clerk + bypass dev), isolamento multi-tenant (Prisma
+  extension), quotas, módulos CRUD, generation (Claude + caching), workers
+  BullMQ, render (Puppeteer → R2), aprovações, notificações. ✅
+- **Fase 3 (próxima):** upload de fotos (R2 presigned), integração fal.ai,
+  testes (Vitest), rate limiting, e-mails de aprovação, deploy Railway.

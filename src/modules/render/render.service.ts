@@ -1,0 +1,43 @@
+import { type CreativeFormat } from '@prisma/client';
+import { getBrowser } from '../../config/puppeteer.js';
+import { uploadBuffer } from '../../config/r2.js';
+import { loadTemplate } from './template-loader.js';
+
+export interface RenderInput {
+  format: CreativeFormat;
+  slug: string;
+  width: number;
+  height: number;
+  data: Record<string, unknown>;
+}
+
+/** Renderiza HTML (Handlebars) em PNG via Puppeteer. */
+export async function renderToPng(input: RenderInput): Promise<Buffer> {
+  const template = await loadTemplate(input.format, input.slug);
+  const html = template(input.data);
+
+  const browser = await getBrowser();
+  const page = await browser.newPage();
+  try {
+    await page.setViewport({ width: input.width, height: input.height, deviceScaleFactor: 1 });
+    await page.setContent(html, { waitUntil: 'load' });
+    const screenshot = await page.screenshot({
+      type: 'png',
+      clip: { x: 0, y: 0, width: input.width, height: input.height },
+    });
+    return Buffer.from(screenshot);
+  } finally {
+    await page.close();
+  }
+}
+
+/** Renderiza e sobe a imagem do criativo para o R2. */
+export async function renderAndUpload(input: {
+  organizationId: string;
+  creativeId: string;
+  render: RenderInput;
+}): Promise<{ key: string; url: string | null }> {
+  const png = await renderToPng(input.render);
+  const key = `creatives/${input.organizationId}/${input.creativeId}.png`;
+  return uploadBuffer({ key, body: png, contentType: 'image/png' });
+}
