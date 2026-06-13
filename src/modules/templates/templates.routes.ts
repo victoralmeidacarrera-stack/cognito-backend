@@ -1,4 +1,5 @@
 import { type FastifyInstance } from 'fastify';
+import { type ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import { getTenantDb } from '../../shared/context.js';
 import { NotFoundError } from '../../shared/errors.js';
@@ -9,23 +10,36 @@ const listTemplatesQuerySchema = z.object({
   activeOnly: z.coerce.boolean().optional(),
 });
 
-export function registerTemplateRoutes(app: FastifyInstance): void {
-  app.get('/templates', async (request) => {
-    const query = listTemplatesQuerySchema.parse(request.query);
-    const items = await getTenantDb(request).template.findMany({
-      where: {
-        ...(query.format ? { format: query.format } : {}),
-        ...(query.activeOnly ? { isActive: true } : {}),
-      },
-      orderBy: [{ format: 'asc' }, { name: 'asc' }],
-    });
-    return { items };
-  });
+const TAGS = ['Templates'];
 
-  app.get('/templates/:id', async (request) => {
-    const { id } = idParamSchema.parse(request.params);
-    const template = await getTenantDb(request).template.findFirst({ where: { id } });
-    if (!template) throw new NotFoundError('Template');
-    return template;
-  });
+export function registerTemplateRoutes(app: FastifyInstance): void {
+  const r = app.withTypeProvider<ZodTypeProvider>();
+
+  r.get(
+    '/templates',
+    { schema: { querystring: listTemplatesQuerySchema, tags: TAGS, summary: 'Lista templates' } },
+    async (request) => {
+      const { format, activeOnly } = request.query;
+      const items = await getTenantDb(request).template.findMany({
+        where: {
+          ...(format ? { format } : {}),
+          ...(activeOnly ? { isActive: true } : {}),
+        },
+        orderBy: [{ format: 'asc' }, { name: 'asc' }],
+      });
+      return { items };
+    },
+  );
+
+  r.get(
+    '/templates/:id',
+    { schema: { params: idParamSchema, tags: TAGS, summary: 'Detalha template' } },
+    async (request) => {
+      const template = await getTenantDb(request).template.findFirst({
+        where: { id: request.params.id },
+      });
+      if (!template) throw new NotFoundError('Template');
+      return template;
+    },
+  );
 }

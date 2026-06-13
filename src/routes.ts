@@ -10,6 +10,7 @@ import { registerBriefingRoutes } from './modules/briefings/briefings.routes.js'
 import { registerCreativeRoutes } from './modules/creatives/creatives.routes.js';
 import { registerApprovalRoutes } from './modules/approvals/approvals.routes.js';
 import { registerUsageRoutes } from './modules/usage/usage.routes.js';
+import { registerMeRoutes } from './modules/me/me.routes.js';
 
 /** Registra webhooks (públicos) e a API v1 (autenticada). */
 export async function registerRoutes(app: FastifyInstance): Promise<void> {
@@ -21,6 +22,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
     (api, _opts, done) => {
       api.addHook('preHandler', authenticate);
 
+      registerMeRoutes(api);
       registerBrandBookRoutes(api);
       registerVehicleRoutes(api);
       registerPhotoRoutes(api);

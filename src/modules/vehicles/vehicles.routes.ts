@@ -1,4 +1,5 @@
 import { type FastifyInstance } from 'fastify';
+import { type ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import { type Prisma } from '@prisma/client';
 import { getTenantDb } from '../../shared/context.js';
@@ -24,48 +25,71 @@ const createVehicleSchema = z.object({
 
 const updateVehicleSchema = createVehicleSchema.partial();
 
+const TAGS = ['Veículos'];
+
 export function registerVehicleRoutes(app: FastifyInstance): void {
-  app.post('/vehicles', async (request, reply) => {
-    const data = createVehicleSchema.parse(request.body);
-    const vehicle = await getTenantDb(request).vehicle.create({
-      data: data as unknown as Prisma.VehicleUncheckedCreateInput,
-      select: { id: true },
-    });
-    return reply.status(201).send(vehicle);
-  });
+  const r = app.withTypeProvider<ZodTypeProvider>();
 
-  app.get('/vehicles', async (request) => {
-    const { page, perPage } = paginationSchema.parse(request.query);
-    const db = getTenantDb(request);
-    const [items, total] = await Promise.all([
-      db.vehicle.findMany({
-        orderBy: { createdAt: 'desc' },
-        skip: (page - 1) * perPage,
-        take: perPage,
-      }),
-      db.vehicle.count(),
-    ]);
-    return { items, total, page, perPage };
-  });
+  r.post(
+    '/vehicles',
+    { schema: { body: createVehicleSchema, tags: TAGS, summary: 'Cadastra veículo' } },
+    async (request, reply) => {
+      const vehicle = await getTenantDb(request).vehicle.create({
+        data: request.body as unknown as Prisma.VehicleUncheckedCreateInput,
+        select: { id: true },
+      });
+      return reply.status(201).send(vehicle);
+    },
+  );
 
-  app.get('/vehicles/:id', async (request) => {
-    const { id } = idParamSchema.parse(request.params);
-    const vehicle = await getTenantDb(request).vehicle.findFirst({
-      where: { id },
-      include: { photos: { orderBy: { position: 'asc' } } },
-    });
-    if (!vehicle) throw new NotFoundError('Veículo');
-    return vehicle;
-  });
+  r.get(
+    '/vehicles',
+    { schema: { querystring: paginationSchema, tags: TAGS, summary: 'Lista veículos' } },
+    async (request) => {
+      const { page, perPage } = request.query;
+      const db = getTenantDb(request);
+      const [items, total] = await Promise.all([
+        db.vehicle.findMany({
+          orderBy: { createdAt: 'desc' },
+          skip: (page - 1) * perPage,
+          take: perPage,
+        }),
+        db.vehicle.count(),
+      ]);
+      return { items, total, page, perPage };
+    },
+  );
 
-  app.patch('/vehicles/:id', async (request) => {
-    const { id } = idParamSchema.parse(request.params);
-    const data = updateVehicleSchema.parse(request.body);
-    const result = await getTenantDb(request).vehicle.updateMany({
-      where: { id },
-      data: data,
-    });
-    if (result.count === 0) throw new NotFoundError('Veículo');
-    return { updated: true };
-  });
+  r.get(
+    '/vehicles/:id',
+    { schema: { params: idParamSchema, tags: TAGS, summary: 'Detalha veículo' } },
+    async (request) => {
+      const vehicle = await getTenantDb(request).vehicle.findFirst({
+        where: { id: request.params.id },
+        include: { photos: { orderBy: { position: 'asc' } } },
+      });
+      if (!vehicle) throw new NotFoundError('Veículo');
+      return vehicle;
+    },
+  );
+
+  r.patch(
+    '/vehicles/:id',
+    {
+      schema: {
+        params: idParamSchema,
+        body: updateVehicleSchema,
+        tags: TAGS,
+        summary: 'Atualiza veículo',
+      },
+    },
+    async (request) => {
+      const result = await getTenantDb(request).vehicle.updateMany({
+        where: { id: request.params.id },
+        data: request.body,
+      });
+      if (result.count === 0) throw new NotFoundError('Veículo');
+      return { updated: true };
+    },
+  );
 }

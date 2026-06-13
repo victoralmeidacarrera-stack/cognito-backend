@@ -79,10 +79,13 @@ npm run worker           # workers BullMQ (geração, render, email)
 
 ## API (v1)
 
-Tudo sob `/api/v1`, autenticado (Clerk bearer ou bypass de dev).
+Tudo sob `/api/v1`, autenticado (Clerk bearer ou bypass de dev). **Contrato vivo
+em `GET /docs`** (Swagger UI) e `GET /docs/json` (OpenAPI). Guia de integração:
+**[docs/FRONTEND.md](docs/FRONTEND.md)**.
 
 | Método | Rota                           | Descrição                         |
 | ------ | ------------------------------ | --------------------------------- |
+| GET    | `/me`                          | usuário + org + quota (bootstrap) |
 | POST   | `/brand-books`                 | cria brand book                   |
 | GET    | `/brand-books`                 | lista                             |
 | POST   | `/vehicles`                    | cadastra veículo                  |

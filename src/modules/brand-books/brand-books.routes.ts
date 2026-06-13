@@ -1,4 +1,5 @@
 import { type FastifyInstance } from 'fastify';
+import { type ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import { type Prisma } from '@prisma/client';
 import { getTenantDb } from '../../shared/context.js';
@@ -22,38 +23,63 @@ const createBrandBookSchema = z.object({
 
 const updateBrandBookSchema = createBrandBookSchema.partial();
 
+const TAGS = ['Brand books'];
+
 export function registerBrandBookRoutes(app: FastifyInstance): void {
-  app.post('/brand-books', async (request, reply) => {
-    const data = createBrandBookSchema.parse(request.body);
-    const brandBook = await getTenantDb(request).brandBook.create({
-      data: data as unknown as Prisma.BrandBookUncheckedCreateInput,
-      select: { id: true },
-    });
-    return reply.status(201).send(brandBook);
-  });
+  const r = app.withTypeProvider<ZodTypeProvider>();
 
-  app.get('/brand-books', async (request) => {
-    const items = await getTenantDb(request).brandBook.findMany({
-      orderBy: { updatedAt: 'desc' },
-    });
-    return { items };
-  });
+  r.post(
+    '/brand-books',
+    { schema: { body: createBrandBookSchema, tags: TAGS, summary: 'Cria brand book' } },
+    async (request, reply) => {
+      const brandBook = await getTenantDb(request).brandBook.create({
+        data: request.body as unknown as Prisma.BrandBookUncheckedCreateInput,
+        select: { id: true },
+      });
+      return reply.status(201).send(brandBook);
+    },
+  );
 
-  app.get('/brand-books/:id', async (request) => {
-    const { id } = idParamSchema.parse(request.params);
-    const brandBook = await getTenantDb(request).brandBook.findFirst({ where: { id } });
-    if (!brandBook) throw new NotFoundError('Brand book');
-    return brandBook;
-  });
+  r.get(
+    '/brand-books',
+    { schema: { tags: TAGS, summary: 'Lista brand books' } },
+    async (request) => {
+      const items = await getTenantDb(request).brandBook.findMany({
+        orderBy: { updatedAt: 'desc' },
+      });
+      return { items };
+    },
+  );
 
-  app.patch('/brand-books/:id', async (request) => {
-    const { id } = idParamSchema.parse(request.params);
-    const data = updateBrandBookSchema.parse(request.body);
-    const result = await getTenantDb(request).brandBook.updateMany({
-      where: { id },
-      data: data,
-    });
-    if (result.count === 0) throw new NotFoundError('Brand book');
-    return { updated: true };
-  });
+  r.get(
+    '/brand-books/:id',
+    { schema: { params: idParamSchema, tags: TAGS, summary: 'Detalha brand book' } },
+    async (request) => {
+      const brandBook = await getTenantDb(request).brandBook.findFirst({
+        where: { id: request.params.id },
+      });
+      if (!brandBook) throw new NotFoundError('Brand book');
+      return brandBook;
+    },
+  );
+
+  r.patch(
+    '/brand-books/:id',
+    {
+      schema: {
+        params: idParamSchema,
+        body: updateBrandBookSchema,
+        tags: TAGS,
+        summary: 'Atualiza brand book',
+      },
+    },
+    async (request) => {
+      const result = await getTenantDb(request).brandBook.updateMany({
+        where: { id: request.params.id },
+        data: request.body,
+      });
+      if (result.count === 0) throw new NotFoundError('Brand book');
+      return { updated: true };
+    },
+  );
 }

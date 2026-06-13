@@ -14,6 +14,9 @@ const envSchema = z.object({
   HOST: z.string().default('0.0.0.0'),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
 
+  // Origens do CORS (separadas por vírgula). Vazio = reflete a origem (dev).
+  CORS_ORIGINS: z.string().optional(),
+
   // Infra
   DATABASE_URL: z.string().url(),
   REDIS_URL: z.string().url(),

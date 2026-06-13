@@ -1,4 +1,5 @@
 import { type FastifyInstance } from 'fastify';
+import { type ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import { getCtx, getTenantDb } from '../../shared/context.js';
 import { idParamSchema } from '../../shared/schemas.js';
@@ -9,19 +10,31 @@ const decisionSchema = z.object({
   note: z.string().max(1000).optional(),
 });
 
-export function registerApprovalRoutes(app: FastifyInstance): void {
-  // Self-service: o cliente aprova/rejeita o próprio criativo.
-  app.post('/creatives/:id/decision', async (request) => {
-    const { id } = idParamSchema.parse(request.params);
-    const body = decisionSchema.parse(request.body);
-    return decideApproval(getTenantDb(request), getCtx(request), {
-      creativeId: id,
-      status: body.status,
-      note: body.note,
-    });
-  });
+const TAGS = ['Aprovações'];
 
-  app.get('/approvals', async (request) => {
+export function registerApprovalRoutes(app: FastifyInstance): void {
+  const r = app.withTypeProvider<ZodTypeProvider>();
+
+  // Self-service: o cliente aprova/rejeita o próprio criativo.
+  r.post(
+    '/creatives/:id/decision',
+    {
+      schema: {
+        params: idParamSchema,
+        body: decisionSchema,
+        tags: TAGS,
+        summary: 'Aprova ou rejeita um criativo',
+      },
+    },
+    async (request) =>
+      decideApproval(getTenantDb(request), getCtx(request), {
+        creativeId: request.params.id,
+        status: request.body.status,
+        note: request.body.note,
+      }),
+  );
+
+  r.get('/approvals', { schema: { tags: TAGS, summary: 'Lista aprovações' } }, async (request) => {
     const items = await getTenantDb(request).approval.findMany({
       orderBy: { updatedAt: 'desc' },
       include: { creative: { select: { id: true, variationIndex: true, imageUrl: true } } },

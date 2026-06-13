@@ -1,4 +1,6 @@
 import { type FastifyInstance } from 'fastify';
+import { type ZodTypeProvider } from 'fastify-type-provider-zod';
+import { z } from 'zod';
 import { getCtx, getTenantDb } from '../../shared/context.js';
 import { idParamSchema } from '../../shared/schemas.js';
 import {
@@ -9,37 +11,57 @@ import {
 } from './briefings.service.js';
 import { createBriefingSchema, listBriefingsQuerySchema } from './briefings.schemas.js';
 
-function headerValue(value: string | string[] | undefined): string | undefined {
-  return Array.isArray(value) ? value[0] : value;
-}
+// passthrough: mantém os demais headers (o Fastify substitui request.headers
+// pelo resultado do schema; sem isso, perderíamos auth, etc.).
+const generateHeadersSchema = z
+  .object({ 'idempotency-key': z.string().min(1).optional() })
+  .passthrough();
+
+const TAGS = ['Briefings'];
 
 export function registerBriefingRoutes(app: FastifyInstance): void {
-  app.post('/briefings', async (request, reply) => {
-    const input = createBriefingSchema.parse(request.body);
-    const briefing = await createBriefing(getTenantDb(request), input);
-    return reply.status(201).send(briefing);
-  });
+  const r = app.withTypeProvider<ZodTypeProvider>();
 
-  app.get('/briefings', async (request) => {
-    const query = listBriefingsQuerySchema.parse(request.query);
-    return listBriefings(getTenantDb(request), query);
-  });
+  r.post(
+    '/briefings',
+    { schema: { body: createBriefingSchema, tags: TAGS, summary: 'Cria briefing' } },
+    async (request, reply) => {
+      const briefing = await createBriefing(getTenantDb(request), request.body);
+      return reply.status(201).send(briefing);
+    },
+  );
 
-  app.get('/briefings/:id', async (request) => {
-    const { id } = idParamSchema.parse(request.params);
-    return getBriefing(getTenantDb(request), id);
-  });
+  r.get(
+    '/briefings',
+    { schema: { querystring: listBriefingsQuerySchema, tags: TAGS, summary: 'Lista briefings' } },
+    async (request) => listBriefings(getTenantDb(request), request.query),
+  );
 
-  // Dispara a geração de criativos (assíncrona). Idempotente via header.
-  app.post('/briefings/:id/generate', async (request, reply) => {
-    const { id } = idParamSchema.parse(request.params);
-    const idempotencyKey = headerValue(request.headers['idempotency-key']);
-    const result = await generateBriefing(
-      getTenantDb(request),
-      getCtx(request),
-      id,
-      idempotencyKey,
-    );
-    return reply.status(result.idempotentReplay ? 200 : 202).send(result);
-  });
+  r.get(
+    '/briefings/:id',
+    { schema: { params: idParamSchema, tags: TAGS, summary: 'Detalha briefing + criativos' } },
+    async (request) => getBriefing(getTenantDb(request), request.params.id),
+  );
+
+  r.post(
+    '/briefings/:id/generate',
+    {
+      schema: {
+        params: idParamSchema,
+        headers: generateHeadersSchema,
+        tags: TAGS,
+        summary: 'Dispara a geração de criativos (idempotente via Idempotency-Key)',
+      },
+    },
+    async (request, reply) => {
+      const idempotencyKey = request.headers['idempotency-key'];
+      const result = await generateBriefing(
+        getTenantDb(request),
+        getCtx(request),
+        request.params.id,
+        idempotencyKey,
+      );
+      return reply.status(result.idempotentReplay ? 200 : 202).send(result);
+    },
+  );
 }

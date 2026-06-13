@@ -1,4 +1,5 @@
 import { type FastifyInstance } from 'fastify';
+import { type ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import { type Prisma } from '@prisma/client';
 import { getTenantDb } from '../../shared/context.js';
@@ -16,47 +17,70 @@ const createCampaignSchema = z.object({
 
 const updateCampaignSchema = createCampaignSchema.partial();
 
+const TAGS = ['Campanhas'];
+
 export function registerCampaignRoutes(app: FastifyInstance): void {
-  app.post('/campaigns', async (request, reply) => {
-    const data = createCampaignSchema.parse(request.body);
-    // organizationId é injetado pela tenant extension; os tipos estáticos ainda
-    // o exigem, daí o cast para o input "unchecked".
-    const campaign = await getTenantDb(request).campaign.create({
-      data: data as Prisma.CampaignUncheckedCreateInput,
-      select: { id: true },
-    });
-    return reply.status(201).send(campaign);
-  });
+  const r = app.withTypeProvider<ZodTypeProvider>();
 
-  app.get('/campaigns', async (request) => {
-    const { page, perPage } = paginationSchema.parse(request.query);
-    const db = getTenantDb(request);
-    const [items, total] = await Promise.all([
-      db.campaign.findMany({
-        orderBy: { createdAt: 'desc' },
-        skip: (page - 1) * perPage,
-        take: perPage,
-      }),
-      db.campaign.count(),
-    ]);
-    return { items, total, page, perPage };
-  });
+  r.post(
+    '/campaigns',
+    { schema: { body: createCampaignSchema, tags: TAGS, summary: 'Cria campanha' } },
+    async (request, reply) => {
+      const campaign = await getTenantDb(request).campaign.create({
+        data: request.body as Prisma.CampaignUncheckedCreateInput,
+        select: { id: true },
+      });
+      return reply.status(201).send(campaign);
+    },
+  );
 
-  app.get('/campaigns/:id', async (request) => {
-    const { id } = idParamSchema.parse(request.params);
-    const campaign = await getTenantDb(request).campaign.findFirst({ where: { id } });
-    if (!campaign) throw new NotFoundError('Campanha');
-    return campaign;
-  });
+  r.get(
+    '/campaigns',
+    { schema: { querystring: paginationSchema, tags: TAGS, summary: 'Lista campanhas' } },
+    async (request) => {
+      const { page, perPage } = request.query;
+      const db = getTenantDb(request);
+      const [items, total] = await Promise.all([
+        db.campaign.findMany({
+          orderBy: { createdAt: 'desc' },
+          skip: (page - 1) * perPage,
+          take: perPage,
+        }),
+        db.campaign.count(),
+      ]);
+      return { items, total, page, perPage };
+    },
+  );
 
-  app.patch('/campaigns/:id', async (request) => {
-    const { id } = idParamSchema.parse(request.params);
-    const data = updateCampaignSchema.parse(request.body);
-    const result = await getTenantDb(request).campaign.updateMany({
-      where: { id },
-      data: data,
-    });
-    if (result.count === 0) throw new NotFoundError('Campanha');
-    return { updated: true };
-  });
+  r.get(
+    '/campaigns/:id',
+    { schema: { params: idParamSchema, tags: TAGS, summary: 'Detalha campanha' } },
+    async (request) => {
+      const campaign = await getTenantDb(request).campaign.findFirst({
+        where: { id: request.params.id },
+      });
+      if (!campaign) throw new NotFoundError('Campanha');
+      return campaign;
+    },
+  );
+
+  r.patch(
+    '/campaigns/:id',
+    {
+      schema: {
+        params: idParamSchema,
+        body: updateCampaignSchema,
+        tags: TAGS,
+        summary: 'Atualiza campanha',
+      },
+    },
+    async (request) => {
+      const result = await getTenantDb(request).campaign.updateMany({
+        where: { id: request.params.id },
+        data: request.body,
+      });
+      if (result.count === 0) throw new NotFoundError('Campanha');
+      return { updated: true };
+    },
+  );
 }
