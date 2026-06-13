@@ -3,6 +3,7 @@ import { authenticate } from './modules/auth/auth.middleware.js';
 import { registerClerkWebhook } from './modules/auth/webhook.routes.js';
 import { registerBrandBookRoutes } from './modules/brand-books/brand-books.routes.js';
 import { registerVehicleRoutes } from './modules/vehicles/vehicles.routes.js';
+import { registerPhotoRoutes } from './modules/photos/photos.routes.js';
 import { registerCampaignRoutes } from './modules/campaigns/campaigns.routes.js';
 import { registerTemplateRoutes } from './modules/templates/templates.routes.js';
 import { registerBriefingRoutes } from './modules/briefings/briefings.routes.js';
@@ -22,6 +23,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
 
       registerBrandBookRoutes(api);
       registerVehicleRoutes(api);
+      registerPhotoRoutes(api);
       registerCampaignRoutes(api);
       registerTemplateRoutes(api);
       registerBriefingRoutes(api);

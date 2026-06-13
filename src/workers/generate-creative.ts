@@ -15,6 +15,7 @@ import {
   markJobFailed,
 } from '../modules/jobs/jobs.service.js';
 import { recordAiUsage, recordVariationUsage } from '../modules/usage/usage.service.js';
+import { notifyCreativesReady } from '../modules/notifications/notifications.service.js';
 
 export async function processGenerateCreative(job: Job): Promise<void> {
   const { jobId, organizationId, briefingId } = generateCreativePayloadSchema.parse(job.data);
@@ -65,6 +66,17 @@ export async function processGenerateCreative(job: Job): Promise<void> {
     await Promise.all(
       creatives.map((creative) => enqueueRenderImage({ organizationId, creativeId: creative.id })),
     );
+
+    // Notifica a org (best-effort; não falha o job se o email der erro).
+    try {
+      await notifyCreativesReady({
+        organizationId,
+        briefingTitle: ctx.briefing.title,
+        count: creatives.length,
+      });
+    } catch (notifyErr) {
+      log.warn({ err: notifyErr }, 'falha ao notificar criativos prontos');
+    }
 
     await markJobCompleted(jobId);
     log.info({ creatives: creatives.length }, 'geração concluída');

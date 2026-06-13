@@ -8,7 +8,7 @@ concessionárias de veículos no Brasil. Monolito modular bem feito.
 - **Runtime:** Node.js 20 + TypeScript (strict) + Fastify 5
 - **Dados:** Prisma 6 + PostgreSQL (Neon em prod, Postgres local via Docker)
 - **Filas:** BullMQ + Redis (Upstash em prod)
-- **Render:** Puppeteer headless (PNG) — _Fase 2_
+- **Render:** Puppeteer headless (Handlebars → PNG)
 - **IA:** Anthropic SDK (Sonnet 4.5 briefing, Haiku 4.5 variações) com prompt caching
 - **Imagem:** fal.ai (Flux 1.1 Pro) — _placeholder_
 - **Storage:** Cloudflare R2 · **Email:** Resend
@@ -25,11 +25,14 @@ multi-tenant com isolamento por organizationId.
 
 ```
 src/
-  config/    env, logger, prisma, redis, queue, r2, anthropic, sentry, plans
-  shared/    errors, types, schemas, utils, middleware
-  modules/   health (Fase 1) · demais features (Fase 2)
-prisma/      schema (12 entidades), seed
+  config/    env, logger, prisma, redis, queue, r2, anthropic, puppeteer, fal, sentry, plans, tenant
+  shared/    errors, types, schemas, utils, context, middleware
+  modules/   auth, brand-books, vehicles, photos, campaigns, templates, briefings,
+             generation, creatives, approvals, jobs, usage, notifications, render, health
+  workers/   generate-creative, render-image, send-email
+prisma/      schema (12 entidades), migrations, seed
 templates/   HTML Handlebars versionados (feed / stories / partials)
+tests/       Vitest (unit)
 ```
 
 ## Setup local
@@ -67,6 +70,7 @@ npm run worker           # workers BullMQ (geração, render, email)
 | `npm run start`         | Roda a API buildada            |
 | `npm run worker:start`  | Roda os workers buildados      |
 | `npm run typecheck`     | `tsc --noEmit`                 |
+| `npm test`              | Vitest (run)                   |
 | `npm run lint`          | ESLint                         |
 | `npm run format`        | Prettier                       |
 | `npm run prisma:deploy` | Aplica migrations              |
@@ -77,20 +81,22 @@ npm run worker           # workers BullMQ (geração, render, email)
 
 Tudo sob `/api/v1`, autenticado (Clerk bearer ou bypass de dev).
 
-| Método | Rota                      | Descrição                         |
-| ------ | ------------------------- | --------------------------------- |
-| POST   | `/brand-books`            | cria brand book                   |
-| GET    | `/brand-books`            | lista                             |
-| POST   | `/vehicles`               | cadastra veículo                  |
-| GET    | `/vehicles`               | lista (paginado)                  |
-| POST   | `/campaigns`              | cria campanha                     |
-| GET    | `/templates`              | lista templates (feed/stories)    |
-| POST   | `/briefings`              | cria briefing                     |
-| POST   | `/briefings/:id/generate` | dispara geração (Idempotency-Key) |
-| GET    | `/creatives?briefingId=`  | lista criativos + aprovação       |
-| POST   | `/creatives/:id/decision` | aprova/rejeita (self-service)     |
-| GET    | `/usage/quota`            | consumo do mês + limites do plano |
-| POST   | `/webhooks/clerk`         | provisionamento (svix, sem auth)  |
+| Método | Rota                           | Descrição                         |
+| ------ | ------------------------------ | --------------------------------- |
+| POST   | `/brand-books`                 | cria brand book                   |
+| GET    | `/brand-books`                 | lista                             |
+| POST   | `/vehicles`                    | cadastra veículo                  |
+| GET    | `/vehicles`                    | lista (paginado)                  |
+| POST   | `/vehicles/:id/photos/presign` | URL assinada de upload (R2)       |
+| POST   | `/vehicles/:id/photos`         | confirma e registra a foto        |
+| POST   | `/campaigns`                   | cria campanha                     |
+| GET    | `/templates`                   | lista templates (feed/stories)    |
+| POST   | `/briefings`                   | cria briefing                     |
+| POST   | `/briefings/:id/generate`      | dispara geração (Idempotency-Key) |
+| GET    | `/creatives?briefingId=`       | lista criativos + aprovação       |
+| POST   | `/creatives/:id/decision`      | aprova/rejeita (self-service)     |
+| GET    | `/usage/quota`                 | consumo do mês + limites do plano |
+| POST   | `/webhooks/clerk`              | provisionamento (svix, sem auth)  |
 
 Fluxo de geração: `POST /briefings/:id/generate` → checa quota → enfileira
 `generate-creative` (Claude Sonnet + prompt caching no BrandBook) → cria 1
@@ -120,5 +126,11 @@ PNG → R2) → cria `Approval` pendente.
 - **Fase 2:** auth (Clerk + bypass dev), isolamento multi-tenant (Prisma
   extension), quotas, módulos CRUD, generation (Claude + caching), workers
   BullMQ, render (Puppeteer → R2), aprovações, notificações. ✅
-- **Fase 3 (próxima):** upload de fotos (R2 presigned), integração fal.ai,
-  testes (Vitest), rate limiting, e-mails de aprovação, deploy Railway.
+- **Fase 3:** upload de fotos (R2 presigned), testes (Vitest), rate limiting,
+  e-mail de criativos prontos, deploy Railway (Dockerfile + Chromium). fal.ai
+  segue como stub pluggável. ✅
+- **Próximos:** auth Clerk em produção, integração fal.ai real, observabilidade
+  Sentry no fluxo, painel de métricas de uso/custo.
+
+> Para rodar o ciclo completo de verdade (Postgres, Redis, Anthropic, R2,
+> Resend, Clerk, Chromium), veja **[docs/RUNBOOK.md](docs/RUNBOOK.md)**.

@@ -1,4 +1,5 @@
 import { PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { env } from './env.js';
 
 // Cloudflare R2 é S3-compatível. O endpoint usa o account id.
@@ -39,4 +40,18 @@ export async function uploadBuffer(input: {
     }),
   );
   return { key: input.key, url: r2PublicUrl(input.key) };
+}
+
+/** Gera uma URL assinada de PUT para upload direto do cliente no R2. */
+export function presignPutUrl(input: {
+  key: string;
+  contentType: string;
+  expiresIn?: number;
+}): Promise<string> {
+  const command = new PutObjectCommand({
+    Bucket: R2_BUCKET,
+    Key: input.key,
+    ContentType: input.contentType,
+  });
+  return getSignedUrl(r2, command, { expiresIn: input.expiresIn ?? 600 });
 }
