@@ -79,6 +79,9 @@ npm run worker           # workers BullMQ (geração, render, email)
 
 ## API (v1)
 
+Contrato vivo (OpenAPI/Swagger UI): **`GET /docs`** · JSON em `/docs/json`.
+Validação de toda entrada via zod (fastify-type-provider-zod).
+
 Tudo sob `/api/v1`, autenticado (Clerk bearer ou bypass de dev). **Contrato vivo
 em `GET /docs`** (Swagger UI) e `GET /docs/json` (OpenAPI). Guia de integração:
 **[docs/FRONTEND.md](docs/FRONTEND.md)**.
