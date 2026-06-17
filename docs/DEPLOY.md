@@ -18,9 +18,8 @@ Stack recomendada, toda com free tier e integrada ao GitHub:
 
 Com `AUTH_DEV_BYPASS=true`, **qualquer pessoa com a URL entra como o admin demo**
 (sem login). Bom para um demo privado — **não divulgue a URL**. Para fechar de
-verdade, ligue o **Clerk** (`VITE_CLERK_PUBLISHABLE_KEY` no front + `CLERK_SECRET_KEY`
-
-- `AUTH_DEV_BYPASS=false` no back). Veja o README do frontend.
+verdade, ligue o **Clerk**: `VITE_CLERK_PUBLISHABLE_KEY` no front, e
+`CLERK_SECRET_KEY` com `AUTH_DEV_BYPASS=false` no back. Veja o README do frontend.
 
 ---
 
