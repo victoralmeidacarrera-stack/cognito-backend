@@ -101,6 +101,53 @@ export async function generateCopy(ctx: GenerationContext): Promise<GenerationRe
   return { output: result.data, usage, model };
 }
 
+/**
+ * Copy determinística de fallback para DEV (Claude indisponível/sem chave).
+ * Montada a partir do veículo/briefing; nunca usada em produção — o worker
+ * só cai aqui fora de produção, com warning no log e model 'dev-fallback'.
+ */
+export function devFallbackOutput(ctx: GenerationContext): ClaudeOutput {
+  const v = ctx.vehicle;
+  const nome = v
+    ? [v.make, v.model, String(v.modelYear ?? v.year)].filter(Boolean).join(' ')
+    : ctx.briefing.title;
+
+  const input = (ctx.briefing.input ?? {}) as Record<string, unknown>;
+  const oferta =
+    typeof input.oferta === 'string' && input.oferta.trim()
+      ? input.oferta.trim()
+      : typeof input.extras === 'string' && input.extras.trim()
+        ? input.extras.trim()
+        : 'condições especiais nesta semana';
+
+  const highlights = (Array.isArray(v?.highlights) ? v.highlights : []).filter(
+    (h): h is string => typeof h === 'string' && h.length > 0,
+  );
+
+  const headlineVariations = [
+    `${nome}: ${oferta}`.slice(0, 120),
+    ...highlights.slice(0, 3).map((h) => `${nome} com ${h}`.slice(0, 120)),
+  ];
+
+  return {
+    headline: `${nome} com ${oferta}`.slice(0, 120),
+    sub_headline: (highlights[0] ?? 'Condições válidas por tempo limitado').slice(0, 160),
+    descricao:
+      `${nome} disponível com ${oferta}. ` +
+      (highlights.length > 0 ? `Destaques: ${highlights.join(', ')}. ` : '') +
+      'Fale com a nossa equipe e agende sua visita.',
+    cta: 'Agende seu test-drive',
+    variacoes: {
+      headline:
+        headlineVariations.length > 0 ? headlineVariations : [`Conheça o ${nome}`.slice(0, 120)],
+      cta: ['Fale no WhatsApp', 'Simule agora', 'Garanta o seu'],
+    },
+    emoji_sugerido: '🚗',
+    justificativa:
+      'Copy de fallback gerada localmente (sem Claude). Configure ANTHROPIC_API_KEY para copy real.',
+  };
+}
+
 /** Expande a saída do Claude em N variações de copy (1 por criativo). */
 export function buildVariations(output: ClaudeOutput, count: number): CreativeCopy[] {
   const headlines = [output.headline, ...output.variacoes.headline];

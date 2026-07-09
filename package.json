@@ -12,6 +12,8 @@
   },
   "scripts": {
     "dev": "tsx watch src/server.ts",
+    "dev:db": "node scripts/dev-db.mjs",
+    "dev:demo": "tsx scripts/seed-demo-creatives.ts",
     "worker": "tsx watch src/workers/index.ts",
     "build": "tsc -p tsconfig.build.json",
     "start": "node dist/server.js",
