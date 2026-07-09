@@ -66,3 +66,19 @@ export async function generateImage(req: FalImageRequest): Promise<FalImageResul
   }
   return { url, ...(typeof data.seed === 'number' ? { seed: data.seed } : {}) };
 }
+
+/**
+ * Sobe um buffer pro storage do fal e devolve a URL pública (CDN fal.media).
+ * Útil como storage de fallback quando o R2 não está configurado.
+ */
+export async function uploadToFalStorage(
+  body: Buffer,
+  opts?: { contentType?: string; expiresIn?: '1h' | '1d' | '7d' | '30d' | '1y' | 'never' },
+): Promise<string> {
+  ensureConfigured();
+  const blob = new Blob([new Uint8Array(body)], { type: opts?.contentType ?? 'image/png' });
+  return fal.storage.upload(
+    blob,
+    opts?.expiresIn ? { lifecycle: { expiresIn: opts.expiresIn } } : undefined,
+  );
+}
