@@ -11,6 +11,7 @@ import type { GenerationContext } from '../src/modules/generation/generation.pro
 import { buildVariations, generateCopy } from '../src/modules/generation/generation.service.js';
 import { renderToPng } from '../src/modules/render/render.service.js';
 import type { CreativeCopy } from '../src/shared/schemas.js';
+import { formatPriceBRL } from '../src/shared/utils.js';
 
 // Copy de reserva caso a key da Anthropic não esteja válida — mantém o preview
 // funcionando (o fundo Flux e o render continuam reais).
@@ -94,10 +95,7 @@ async function main(): Promise<void> {
   });
 
   console.log('③ Renderizando o template (Handlebars → Puppeteer)...');
-  const price =
-    vehicle.priceCents != null
-      ? `R$ ${(vehicle.priceCents / 100).toLocaleString('pt-BR')}`
-      : 'sob consulta';
+  const price = formatPriceBRL(vehicle.priceCents);
   const png = await renderToPng({
     format: 'FEED',
     slug: 'oferta-destaque',

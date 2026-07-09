@@ -12,6 +12,7 @@ import { renderImagePayloadSchema } from '../modules/jobs/job-payloads.js';
 import { markJobCompleted, markJobFailed } from '../modules/jobs/jobs.service.js';
 import { renderAndUpload } from '../modules/render/render.service.js';
 import { type CreativeCopy } from '../shared/schemas.js';
+import { formatPriceBRL } from '../shared/utils.js';
 
 function disclaimerFrom(factoryRestrictions: unknown): string {
   if (factoryRestrictions && typeof factoryRestrictions === 'object') {
@@ -29,7 +30,7 @@ export async function processRenderImage(job: Job): Promise<void> {
   try {
     const creative = await db.creative.findFirst({
       where: { id: creativeId },
-      include: { template: true },
+      include: { template: true, briefing: { include: { vehicle: true } } },
     });
     if (!creative) throw new Error('Creative não encontrado');
     if (!creative.template) throw new Error('Creative sem template associado');
@@ -48,6 +49,7 @@ export async function processRenderImage(job: Job): Promise<void> {
     ]);
 
     const copy = creative.copy as unknown as CreativeCopy;
+    const priceCents = creative.briefing?.vehicle?.priceCents ?? null;
     const data: Record<string, unknown> = {
       headline: copy.headline,
       cta: copy.cta,
@@ -56,6 +58,8 @@ export async function processRenderImage(job: Job): Promise<void> {
       sub_headline: copy.sub_headline ?? '',
       descricao: copy.descricao ?? '',
       emoji: copy.emoji_sugerido ?? '',
+      // Preço do veículo do briefing (só renderiza se houver veículo com preço).
+      price: priceCents != null ? formatPriceBRL(priceCents) : '',
       disclaimer: disclaimerFrom(org.factoryRestrictions),
       brand: brandBook
         ? {
