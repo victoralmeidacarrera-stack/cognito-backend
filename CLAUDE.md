@@ -60,7 +60,12 @@ a API sobe mesmo assim (Prisma/Redis são lazy; `/health/ready` mostra degradado
 
 Fases 1–4 + telas prontas e no `main`. Geração de copy (Claude) + render (Handlebars
 →Puppeteer→R2) + fila (BullMQ) implementados. fal.ai integrado (`config/fal.ts`),
-validado (falta saldo na conta fal). **Pendente:** fiar o Flux no pipeline de render
-(opção C: foto real do veículo se existir, senão fundo Flux; 2 fundos/briefing,
-reusados) — precisa adicionar `Creative.backgroundUrl` (schema+migration). Ver
-`docs/RUNBOOK.md` (ciclo real) e `docs/DEPLOY.md` (Neon+Railway+Vercel).
+validado (falta saldo na conta fal). **Flux fiado no pipeline (opção C):**
+`Creative.backgroundUrl` (schema+migration `20260617000000_creative_background_url`);
+`modules/backgrounds` resolve o fundo 1x por briefing (foto real do veículo → senão
+2 fundos Flux persistidos no R2 → senão cor sólida), reusados round-robin entre as
+variações. É **best-effort**: Flux sem saldo/timeout cai pra cor sólida sem quebrar
+a geração. O render passa `backgroundUrl` como `photoUrl` (templates já suportavam).
+**Pendente:** validar ponta-a-ponta com saldo real na fal; (nice-to-have) passar
+`price` do veículo pro template no render. Ver `docs/RUNBOOK.md` (ciclo real) e
+`docs/DEPLOY.md` (Neon+Railway+Vercel).

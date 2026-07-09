@@ -51,6 +51,8 @@ export async function processRenderImage(job: Job): Promise<void> {
     const data: Record<string, unknown> = {
       headline: copy.headline,
       cta: copy.cta,
+      // Fundo da composição (foto real ou cena Flux). Vazio = cor sólida.
+      photoUrl: creative.backgroundUrl ?? '',
       sub_headline: copy.sub_headline ?? '',
       descricao: copy.descricao ?? '',
       emoji: copy.emoji_sugerido ?? '',

@@ -427,6 +427,11 @@ model Creative {
   // Copy estruturada (subset do schema de saída do Claude para esta variação)
   copy Json @default("{}")
 
+  // Fundo da composição (foto real do veículo ou cena gerada pelo Flux).
+  // Resolvido 1x por briefing e reusado entre as variações; o texto é sempre
+  // composto por cima no HTML (Puppeteer), nunca vem da imagem.
+  backgroundUrl String?
+
   // Resultado do render
   imageR2Key String?
   imageUrl   String?

@@ -2,6 +2,7 @@ import { BriefingStatus, type Prisma } from '@prisma/client';
 import { type Job } from 'bullmq';
 import { logger } from '../config/logger.js';
 import { tenantPrisma } from '../config/tenant.js';
+import { resolveBriefingBackgrounds } from '../modules/backgrounds/backgrounds.service.js';
 import { createCreativesFromVariations } from '../modules/creatives/creatives.service.js';
 import {
   buildVariations,
@@ -43,12 +44,23 @@ export async function processGenerateCreative(job: Job): Promise<void> {
       select: { id: true },
     });
 
+    // Resolve os fundos uma vez por briefing (foto real → Flux → cor sólida);
+    // reusados em round-robin entre as variações. Best-effort (não quebra).
+    const backgrounds = await resolveBriefingBackgrounds(db, {
+      organizationId,
+      briefingId,
+      format: ctx.briefing.format,
+      vehicle: ctx.vehicle,
+    });
+    log.info({ backgrounds: backgrounds.length }, 'fundos resolvidos');
+
     const variations = buildVariations(output, ctx.briefing.requestedVariations);
     const creatives = await createCreativesFromVariations(db, {
       briefingId,
       format: ctx.briefing.format,
       variations,
       templateIds: templates.map((t) => t.id),
+      backgrounds,
     });
 
     await recordVariationUsage({ organizationId, briefingId, quantity: creatives.length });
