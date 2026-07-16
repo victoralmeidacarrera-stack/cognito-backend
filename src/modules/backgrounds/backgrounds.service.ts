@@ -1,9 +1,16 @@
 import { PhotoKind, type Vehicle } from '@prisma/client';
-import { falEnabled, generateImage } from '../../config/fal.js';
+import { env } from '../../config/env.js';
+import {
+  falEnabled,
+  generateImage,
+  removeBackground,
+  uploadToFalStorage,
+} from '../../config/fal.js';
 import { logger } from '../../config/logger.js';
-import { r2PublicUrl, uploadBuffer } from '../../config/r2.js';
+import { getBrowser } from '../../config/puppeteer.js';
+import { r2Configured, r2PublicUrl, uploadBuffer } from '../../config/r2.js';
 import { type TenantPrisma } from '../../config/tenant.js';
-import { buildBackgroundPrompt } from './background-prompt.js';
+import { buildBackgroundPrompt, buildEmptyScenePrompt } from './background-prompt.js';
 
 const log = logger.child({ module: 'backgrounds' });
 
@@ -26,14 +33,16 @@ export interface ResolveBackgroundsInput {
 }
 
 /**
- * Resolve as URLs de fundo de um briefing — opção C:
- *   1. Se o veículo tem foto(s) real(is), usa-as (até 2, reusadas).
- *   2. Senão, e se o Flux estiver configurado, gera 2 fundos (cena sem texto)
- *      e os persiste no R2.
- *   3. Senão, devolve [] — os templates renderizam sobre cor sólida da marca.
+ * Resolve as URLs de fundo de um briefing:
+ *   1. Veículo COM foto real → COMPOSIÇÃO: recorta o carro da foto (remoção
+ *      de fundo via fal) e cola sobre cenas vazias geradas pelo Flux — o
+ *      carro verdadeiro do estoque, no cenário publicitário da IA.
+ *      (VEHICLE_COMPOSITE=false volta a usar a foto crua como fundo.)
+ *   2. Veículo SEM foto → Flux gera a cena com o carro (prompt descritivo).
+ *   3. Nada disponível → [] — templates renderizam sobre cor sólida da marca.
  *
- * Best-effort: qualquer falha (Flux sem saldo, R2 indisponível) é logada e
- * devolve [] em vez de quebrar a geração.
+ * Best-effort em TODAS as etapas: recorte/Flux/composição falhando, cai pro
+ * degrau anterior (foto crua → cor sólida) sem quebrar a geração.
  */
 export async function resolveBriefingBackgrounds(
   db: TenantPrisma,
@@ -43,6 +52,21 @@ export async function resolveBriefingBackgrounds(
   if (input.vehicle) {
     const photoUrls = await loadVehiclePhotoUrls(db, input.vehicle.id);
     if (photoUrls.length > 0) {
+      if (env.VEHICLE_COMPOSITE === 'true' && falEnabled()) {
+        try {
+          const urls = await composeVehicleBackgrounds(input, photoUrls[0]!);
+          log.info(
+            { briefingId: input.briefingId, count: urls.length },
+            'fundo: composição (foto real recortada + cena Flux)',
+          );
+          return urls;
+        } catch (err) {
+          log.warn(
+            { err, briefingId: input.briefingId },
+            'composição falhou; usando a foto crua como fundo',
+          );
+        }
+      }
       log.info({ briefingId: input.briefingId, count: photoUrls.length }, 'fundo: foto real');
       return photoUrls;
     }
@@ -59,6 +83,100 @@ export async function resolveBriefingBackgrounds(
     log.warn({ err, briefingId: input.briefingId }, 'falha ao gerar fundo Flux; usando cor sólida');
     return [];
   }
+}
+
+// ── Composição: recorte da foto real sobre cena Flux ───────────────
+
+/** Posição do carro na composição, por formato (a área de texto fica livre). */
+const COMPOSITE_LAYOUT = {
+  FEED: { bottomPct: 26, widthPct: 94, maxHeightPct: 52 },
+  STORIES: { bottomPct: 31, widthPct: 96, maxHeightPct: 46 },
+} as const;
+
+/**
+ * Gera os fundos compostos: 1 recorte do carro (reusado) sobre N cenas vazias
+ * do Flux. Devolve as URLs dos PNGs finais persistidos.
+ */
+async function composeVehicleBackgrounds(
+  input: ResolveBackgroundsInput,
+  photoUrl: string,
+): Promise<string[]> {
+  const { width, height } = backgroundSize(input.format);
+
+  const cutoutUrl = await removeBackground(photoUrl);
+  log.info({ briefingId: input.briefingId }, 'recorte do veículo pronto');
+
+  const prompt = buildEmptyScenePrompt();
+  log.info({ briefingId: input.briefingId, prompt }, 'prompt da cena vazia (composição)');
+
+  const urls: string[] = [];
+  for (let i = 0; i < BACKGROUNDS_PER_BRIEFING; i += 1) {
+    const scene = await generateImage({ prompt, width, height, outputFormat: 'jpeg' });
+    const png = await composeScene({
+      sceneUrl: scene.url,
+      cutoutUrl,
+      width,
+      height,
+      format: input.format,
+    });
+    const key = `backgrounds/${input.organizationId}/${input.briefingId}/composite-${i}.png`;
+    urls.push(await persistBuffer(key, png));
+  }
+  return urls;
+}
+
+/** Cola o recorte (PNG transparente) sobre a cena, via Puppeteer. */
+async function composeScene(opts: {
+  sceneUrl: string;
+  cutoutUrl: string;
+  width: number;
+  height: number;
+  format: 'FEED' | 'STORIES';
+}): Promise<Buffer> {
+  const l = COMPOSITE_LAYOUT[opts.format];
+  const html = `<!doctype html><html><head><meta charset="utf-8"><style>
+    * { margin: 0; padding: 0; }
+    body { width: ${opts.width}px; height: ${opts.height}px; position: relative; overflow: hidden; background: #0A2540; }
+    .scene { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+    .car {
+      position: absolute; left: 50%; transform: translateX(-50%);
+      bottom: ${l.bottomPct}%; width: ${l.widthPct}%; max-height: ${l.maxHeightPct}%;
+      object-fit: contain;
+      filter: drop-shadow(0 34px 42px rgba(0,0,0,0.45));
+    }
+  </style></head><body>
+    <img class="scene" src="${opts.sceneUrl}" />
+    <img class="car" src="${opts.cutoutUrl}" />
+  </body></html>`;
+
+  const browser = await getBrowser();
+  const page = await browser.newPage();
+  try {
+    await page.setViewport({ width: opts.width, height: opts.height, deviceScaleFactor: 1 });
+    await page.setContent(html, { waitUntil: 'load', timeout: 60_000 });
+    // Garante as duas imagens remotas decodificadas antes do screenshot
+    // (string: executa no browser, onde `document` existe — o backend não tem lib DOM).
+    await page.waitForFunction(
+      'Array.from(document.images).every((i) => i.complete && i.naturalWidth > 0)',
+      { timeout: 60_000 },
+    );
+    const shot = await page.screenshot({
+      type: 'png',
+      clip: { x: 0, y: 0, width: opts.width, height: opts.height },
+    });
+    return Buffer.from(shot);
+  } finally {
+    await page.close();
+  }
+}
+
+/** Persiste um buffer no storage disponível (R2 → fal) e devolve a URL. */
+async function persistBuffer(key: string, body: Buffer): Promise<string> {
+  if (r2Configured()) {
+    const { url } = await uploadBuffer({ key, body, contentType: 'image/png' });
+    if (url) return url;
+  }
+  return uploadToFalStorage(body, { contentType: 'image/png', expiresIn: '1y' });
 }
 
 /** Carrega até N URLs públicas de fotos do veículo, na ordem de preferência. */

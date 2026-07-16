@@ -67,6 +67,33 @@ export async function generateImage(req: FalImageRequest): Promise<FalImageResul
   return { url, ...(typeof data.seed === 'number' ? { seed: data.seed } : {}) };
 }
 
+// Modelos de remoção de fundo, em ordem de preferência (BiRefNet tem a
+// melhor qualidade para objetos grandes como carros; rembg é o utilitário).
+const REMBG_MODELS = ['fal-ai/birefnet', 'fal-ai/imageutils/rembg'] as const;
+
+/**
+ * Remove o fundo de uma imagem (ex.: foto real do veículo) e devolve a URL
+ * do PNG com transparência. Tenta BiRefNet e cai pro rembg se indisponível.
+ */
+export async function removeBackground(imageUrl: string): Promise<string> {
+  ensureConfigured();
+
+  let lastError: unknown;
+  for (const model of REMBG_MODELS) {
+    try {
+      const result = await fal.subscribe(model, { input: { image_url: imageUrl } });
+      const data = result.data as { image?: { url?: string } };
+      if (data.image?.url) return data.image.url;
+      lastError = new DomainError(`${model} não retornou imagem.`);
+    } catch (err) {
+      lastError = err;
+    }
+  }
+  throw lastError instanceof Error
+    ? lastError
+    : new DomainError('Falha ao remover o fundo da foto.');
+}
+
 /**
  * Sobe um buffer pro storage do fal e devolve a URL pública (CDN fal.media).
  * Útil como storage de fallback quando o R2 não está configurado.

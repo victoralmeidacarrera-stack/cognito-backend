@@ -41,6 +41,22 @@ export const DEFAULT_SCENE_PROMPT =
   'professional automotive advertising scene, modern car dealership showroom, ' +
   'soft cinematic lighting, premium and aspirational mood, photorealistic, high detail';
 
+/**
+ * Prompt da CENA VAZIA para a composição com a foto real do carro
+ * (o recorte do carro é colado por cima — a cena NÃO pode ter veículo).
+ * Override via FLUX_SCENE_PROMPT no .env.
+ */
+export const DEFAULT_EMPTY_SCENE_PROMPT =
+  'professional automotive advertising backdrop, empty paved ground in front of a ' +
+  'premium modern building, golden hour cinematic lighting, wide open space in the ' +
+  'lower half for product placement, photorealistic, ultra detailed, ' +
+  'no cars, no vehicles, no people';
+
+/** Prompt da cena vazia (composição foto real + cenário Flux). */
+export function buildEmptyScenePrompt(): string {
+  return env.FLUX_SCENE_PROMPT ?? DEFAULT_EMPTY_SCENE_PROMPT;
+}
+
 /** Descrição curta do veículo usada no lugar do placeholder {vehicle}. */
 export function describeVehicle(vehicle: Vehicle): string {
   return [vehicle.color, String(vehicle.year), vehicle.make, vehicle.model, vehicle.trim]

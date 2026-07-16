@@ -86,9 +86,24 @@ FLUX_BACKGROUND_PROMPT=clean automotive scene, empty road at dusk, {vehicle} ...
 
 `{vehicle}` vira a descrição do veículo (ex.: "prata 2025 VW Nivus Highline").
 O prompt final de cada geração aparece no log da API (`prompt do fundo Flux`).
-Lembrete do pipeline: **foto real do veículo no banco tem prioridade** — o Flux
-só entra quando o veículo não tem foto; cor sólida é o último fallback. O
-sufixo anti-texto é sempre anexado (texto vem do HTML, nunca da IA).
+O sufixo anti-texto é sempre anexado (texto vem do HTML, nunca da IA).
+
+## Composição: foto real recortada + cenário Flux
+
+Comportamento padrão quando o veículo **tem foto no banco**: o app recorta o
+carro da foto (remoção de fundo via fal — BiRefNet/rembg), o Flux gera uma
+**cena vazia** (sem carro) e o Puppeteer cola o recorte sobre a cena — o carro
+verdadeiro do estoque no cenário publicitário. Controles no `.env`:
+
+```
+VEHICLE_COMPOSITE=true       # 'false' volta a usar a foto crua como fundo
+FLUX_SCENE_PROMPT=           # muda a cena vazia (não descreva carro nela!)
+```
+
+Cadeia de fallback (best-effort, nunca quebra a geração):
+composição → foto crua → Flux com carro (sem foto no banco) → cor sólida.
+Posição/tamanho do recorte por formato: `COMPOSITE_LAYOUT` em
+`src/modules/backgrounds/backgrounds.service.ts`.
 
 ## Problemas comuns
 

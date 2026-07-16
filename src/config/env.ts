@@ -46,6 +46,13 @@ const envSchema = z.object({
   // Suporta o placeholder {vehicle} — substituído pela descrição do veículo.
   FLUX_BACKGROUND_PROMPT: z.string().optional(),
 
+  // Composição foto real + cenário: recorta o carro da foto do banco e cola
+  // sobre uma cena vazia gerada pelo Flux. Default ligado (a ideia original);
+  // 'false' volta a usar a foto crua como fundo.
+  VEHICLE_COMPOSITE: z.enum(['true', 'false']).default('true'),
+  // Override do prompt da cena vazia usada na composição (sem carro).
+  FLUX_SCENE_PROMPT: z.string().optional(),
+
   // Cloudflare R2
   R2_ACCOUNT_ID: z.string().optional(),
   R2_ACCESS_KEY_ID: z.string().optional(),
