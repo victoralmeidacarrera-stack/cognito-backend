@@ -1,8 +1,10 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { env } from './env.js';
 
+// Chave opcional no boot (outro COPY_PROVIDER pode estar em uso); sem chave
+// válida, a chamada falha na hora — e o fallback de dev cobre fora de produção.
 export const anthropic = new Anthropic({
-  apiKey: env.ANTHROPIC_API_KEY,
+  apiKey: env.ANTHROPIC_API_KEY ?? 'unset',
 });
 
 // Modelos por tarefa: Sonnet para o briefing principal, Haiku para variações

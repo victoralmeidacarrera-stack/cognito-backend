@@ -3,6 +3,7 @@ import { falEnabled, generateImage } from '../../config/fal.js';
 import { logger } from '../../config/logger.js';
 import { r2PublicUrl, uploadBuffer } from '../../config/r2.js';
 import { type TenantPrisma } from '../../config/tenant.js';
+import { buildBackgroundPrompt } from './background-prompt.js';
 
 const log = logger.child({ module: 'backgrounds' });
 
@@ -76,6 +77,9 @@ async function loadVehiclePhotoUrls(db: TenantPrisma, vehicleId: string): Promis
 async function generateFluxBackgrounds(input: ResolveBackgroundsInput): Promise<string[]> {
   const { width, height } = backgroundSize(input.format);
   const prompt = buildBackgroundPrompt(input.vehicle);
+  // Prompt final visível no log — facilita ajustar em background-prompt.ts
+  // ou via FLUX_BACKGROUND_PROMPT no .env.
+  log.info({ briefingId: input.briefingId, prompt }, 'prompt do fundo Flux');
 
   const urls: string[] = [];
   for (let i = 0; i < BACKGROUNDS_PER_BRIEFING; i += 1) {
@@ -117,26 +121,5 @@ function backgroundSize(format: 'FEED' | 'STORIES'): { width: number; height: nu
   return format === 'STORIES' ? { width: 1080, height: 1920 } : { width: 1080, height: 1350 };
 }
 
-/**
- * Prompt da cena (em inglês — o Flux responde melhor). Descreve um cenário
- * publicitário automotivo; o sufixo anti-texto é anexado em config/fal.ts.
- */
-function buildBackgroundPrompt(vehicle: Vehicle | null): string {
-  if (!vehicle) {
-    return (
-      'professional automotive advertising scene, modern car dealership showroom, ' +
-      'soft cinematic lighting, premium and aspirational mood, photorealistic, high detail'
-    );
-  }
-
-  const descriptors = [vehicle.color, `${vehicle.year}`, vehicle.make, vehicle.model, vehicle.trim]
-    .filter(Boolean)
-    .join(' ');
-
-  return (
-    `professional automotive advertising photograph of a ${descriptors}, ` +
-    'parked in a premium modern setting, golden hour cinematic lighting, ' +
-    'glossy reflections, shallow depth of field, photorealistic, ultra detailed, ' +
-    'magazine-quality car commercial'
-  );
-}
+// O prompt do fundo mora em ./background-prompt.ts (editável e com override
+// via FLUX_BACKGROUND_PROMPT no .env).

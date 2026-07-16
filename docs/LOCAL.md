@@ -58,6 +58,38 @@ Todos **só existem fora de produção** e logam warning quando ativam:
   determinística do veículo/briefing, model `dev-fallback`). Com
   `ANTHROPIC_API_KEY` válida, a copy real volta sozinha.
 
+## Trocar a IA da copy (sem usar o Claude)
+
+Qualquer API compatível com OpenAI chat/completions serve — no `.env`:
+
+```
+COPY_PROVIDER=openai
+LLM_BASE_URL=https://api.deepseek.com/v1        # ou Groq, Gemini, Ollama...
+LLM_API_KEY=sk-...
+LLM_MODEL=deepseek-chat
+```
+
+Exemplos de base URL: DeepSeek `https://api.deepseek.com/v1` · Groq
+`https://api.groq.com/openai/v1` · Gemini
+`https://generativelanguage.googleapis.com/v1beta/openai` · Ollama local
+`http://localhost:11434/v1` (sem LLM_API_KEY). A saída passa pela mesma
+validação de schema; com `COPY_PROVIDER=openai` a chave Anthropic é dispensável.
+
+## Mudar o prompt do fundo (Flux)
+
+O prompt mora em **`src/modules/backgrounds/background-prompt.ts`** (comentado,
+com as constantes editáveis) e pode ser sobrescrito sem código via `.env`:
+
+```
+FLUX_BACKGROUND_PROMPT=clean automotive scene, empty road at dusk, {vehicle} ...
+```
+
+`{vehicle}` vira a descrição do veículo (ex.: "prata 2025 VW Nivus Highline").
+O prompt final de cada geração aparece no log da API (`prompt do fundo Flux`).
+Lembrete do pipeline: **foto real do veículo no banco tem prioridade** — o Flux
+só entra quando o veículo não tem foto; cor sólida é o último fallback. O
+sufixo anti-texto é sempre anexado (texto vem do HTML, nunca da IA).
+
 ## Problemas comuns
 
 - **Porta 5432 ocupada** — outro Postgres rodando; pare-o ou mude a porta em

@@ -39,8 +39,8 @@ Regras:
 - Respeite RIGOROSAMENTE as restrições da fábrica e o manual de marca.
 - Gere variações suficientes para montar o número de criativos pedido.`;
 
-/** Blocos de system com prompt caching no bloco estável (marca + restrições). */
-export function buildSystemBlocks(ctx: GenerationContext): Anthropic.TextBlockParam[] {
+/** Bloco de marca + restrições (estável por org) em texto puro. */
+function buildBrandText(ctx: GenerationContext): string {
   const brandParts: string[] = [];
   if (ctx.brandBook) {
     brandParts.push(`# Manual de Marca: ${ctx.brandBook.name}`);
@@ -58,14 +58,26 @@ export function buildSystemBlocks(ctx: GenerationContext): Anthropic.TextBlockPa
   brandParts.push(
     `# Restrições da fábrica\n${JSON.stringify(ctx.factoryRestrictions ?? {}, null, 2)}`,
   );
+  return brandParts.join('\n\n');
+}
 
+/**
+ * System prompt em texto puro — agnóstico de provedor. É este texto que vai
+ * para qualquer IA compatível com OpenAI (COPY_PROVIDER=openai).
+ */
+export function buildSystemText(ctx: GenerationContext): string {
+  return `${SCHEMA_INSTRUCTIONS}\n\n${buildBrandText(ctx)}`;
+}
+
+/** Blocos de system com prompt caching no bloco estável (marca + restrições). */
+export function buildSystemBlocks(ctx: GenerationContext): Anthropic.TextBlockParam[] {
   // O bloco estável (instruções + marca + restrições) é o MESMO entre gerações
   // da mesma org → cache_control ephemeral garante cache hit nas variações.
   return [
     { type: 'text', text: SCHEMA_INSTRUCTIONS },
     {
       type: 'text',
-      text: brandParts.join('\n\n'),
+      text: buildBrandText(ctx),
       cache_control: { type: 'ephemeral' },
     },
   ];

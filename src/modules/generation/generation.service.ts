@@ -1,10 +1,16 @@
 import type Anthropic from '@anthropic-ai/sdk';
 import { anthropic, ANTHROPIC_MODELS, type TokenUsage } from '../../config/anthropic.js';
+import { env } from '../../config/env.js';
 import { prisma } from '../../config/prisma.js';
 import { type TenantPrisma } from '../../config/tenant.js';
 import { DomainError, NotFoundError } from '../../shared/errors.js';
 import { claudeOutputSchema, type ClaudeOutput, type CreativeCopy } from '../../shared/schemas.js';
-import { buildSystemBlocks, buildUserPrompt, type GenerationContext } from './generation.prompt.js';
+import {
+  buildSystemBlocks,
+  buildSystemText,
+  buildUserPrompt,
+  type GenerationContext,
+} from './generation.prompt.js';
 
 export interface GenerationResult {
   output: ClaudeOutput;
@@ -64,22 +70,11 @@ function stripJsonFences(text: string): string {
     .trim();
 }
 
-/** Chama o Claude (Sonnet) com prompt caching no BrandBook e valida a saída. */
-export async function generateCopy(ctx: GenerationContext): Promise<GenerationResult> {
-  const model = ANTHROPIC_MODELS.briefing;
-
-  const message = await anthropic.messages.create({
-    model,
-    max_tokens: 2048,
-    system: buildSystemBlocks(ctx),
-    messages: [{ role: 'user', content: buildUserPrompt(ctx) }],
-  });
-
-  const raw = stripJsonFences(extractText(message.content));
-
+/** Valida o texto cru da IA (qualquer provedor) contra o schema de saída. */
+function parseAndValidate(raw: string): ClaudeOutput {
   let parsed: unknown;
   try {
-    parsed = JSON.parse(raw);
+    parsed = JSON.parse(stripJsonFences(raw));
   } catch {
     throw new DomainError('A IA não retornou um JSON válido.', { raw: raw.slice(0, 500) });
   }
@@ -90,6 +85,33 @@ export async function generateCopy(ctx: GenerationContext): Promise<GenerationRe
       issues: result.error.issues,
     });
   }
+  return result.data;
+}
+
+/**
+ * Gera a copy com o provedor configurado (COPY_PROVIDER):
+ * - 'anthropic' (default): SDK da Anthropic com prompt caching no BrandBook.
+ * - 'openai': qualquer API compatível com OpenAI chat/completions
+ *   (OpenAI, DeepSeek, Groq, Gemini OpenAI-compat, Ollama...), via
+ *   LLM_BASE_URL + LLM_API_KEY + LLM_MODEL.
+ * A saída passa pela MESMA validação de schema nos dois caminhos.
+ */
+export async function generateCopy(ctx: GenerationContext): Promise<GenerationResult> {
+  if (env.COPY_PROVIDER === 'openai') return generateCopyOpenAI(ctx);
+  return generateCopyAnthropic(ctx);
+}
+
+async function generateCopyAnthropic(ctx: GenerationContext): Promise<GenerationResult> {
+  const model = ANTHROPIC_MODELS.briefing;
+
+  const message = await anthropic.messages.create({
+    model,
+    max_tokens: 2048,
+    system: buildSystemBlocks(ctx),
+    messages: [{ role: 'user', content: buildUserPrompt(ctx) }],
+  });
+
+  const output = parseAndValidate(extractText(message.content));
 
   const usage: TokenUsage = {
     inputTokens: message.usage.input_tokens,
@@ -98,7 +120,58 @@ export async function generateCopy(ctx: GenerationContext): Promise<GenerationRe
     cacheWriteTokens: message.usage.cache_creation_input_tokens ?? 0,
   };
 
-  return { output: result.data, usage, model };
+  return { output, usage, model };
+}
+
+/** Shape mínimo da resposta de um chat/completions compatível com OpenAI. */
+interface OpenAIChatResponse {
+  choices?: Array<{ message?: { content?: string } }>;
+  usage?: { prompt_tokens?: number; completion_tokens?: number };
+  error?: { message?: string };
+}
+
+async function generateCopyOpenAI(ctx: GenerationContext): Promise<GenerationResult> {
+  if (!env.LLM_BASE_URL || !env.LLM_MODEL) {
+    throw new DomainError(
+      'COPY_PROVIDER=openai exige LLM_BASE_URL e LLM_MODEL (LLM_API_KEY conforme o provedor).',
+    );
+  }
+
+  const res = await fetch(`${env.LLM_BASE_URL.replace(/\/$/, '')}/chat/completions`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      ...(env.LLM_API_KEY ? { authorization: `Bearer ${env.LLM_API_KEY}` } : {}),
+    },
+    body: JSON.stringify({
+      model: env.LLM_MODEL,
+      max_tokens: 2048,
+      messages: [
+        { role: 'system', content: buildSystemText(ctx) },
+        { role: 'user', content: buildUserPrompt(ctx) },
+      ],
+    }),
+  });
+
+  const body = (await res.json().catch(() => ({}))) as OpenAIChatResponse;
+  if (!res.ok) {
+    throw new DomainError(
+      `Provedor de copy respondeu ${res.status}: ${body.error?.message ?? 'erro desconhecido'}`,
+    );
+  }
+
+  const raw = body.choices?.[0]?.message?.content ?? '';
+  if (!raw) throw new DomainError('Provedor de copy não retornou conteúdo.');
+
+  const output = parseAndValidate(raw);
+  const usage: TokenUsage = {
+    inputTokens: body.usage?.prompt_tokens ?? 0,
+    outputTokens: body.usage?.completion_tokens ?? 0,
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
+  };
+
+  return { output, usage, model: `openai:${env.LLM_MODEL}` };
 }
 
 /**
