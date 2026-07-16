@@ -19,6 +19,11 @@ export const r2 = new S3Client({
 
 export const R2_BUCKET = env.R2_BUCKET;
 
+/** R2 está de fato configurado para uploads? (credenciais presentes) */
+export function r2Configured(): boolean {
+  return Boolean(env.R2_ACCOUNT_ID && env.R2_ACCESS_KEY_ID && env.R2_SECRET_ACCESS_KEY);
+}
+
 /** Monta a URL pública de um objeto a partir do domínio configurado. */
 export function r2PublicUrl(key: string): string | null {
   if (!env.R2_PUBLIC_URL) return null;

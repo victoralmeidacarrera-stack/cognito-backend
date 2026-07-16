@@ -1,9 +1,8 @@
 import { type CreativeFormat } from '@prisma/client';
-import { env } from '../../config/env.js';
 import { falEnabled, uploadToFalStorage } from '../../config/fal.js';
 import { logger } from '../../config/logger.js';
 import { getBrowser } from '../../config/puppeteer.js';
-import { uploadBuffer } from '../../config/r2.js';
+import { r2Configured, uploadBuffer } from '../../config/r2.js';
 import { loadTemplate } from './template-loader.js';
 
 export interface RenderInput {
@@ -32,11 +31,6 @@ export async function renderToPng(input: RenderInput): Promise<Buffer> {
   } finally {
     await page.close();
   }
-}
-
-/** R2 está de fato configurado para uploads? (credenciais presentes) */
-function r2Configured(): boolean {
-  return Boolean(env.R2_ACCOUNT_ID && env.R2_ACCESS_KEY_ID && env.R2_SECRET_ACCESS_KEY);
 }
 
 /**
