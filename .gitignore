@@ -31,3 +31,6 @@ coverage/
 # Puppeteer / temp render artifacts
 .tmp/
 *.png.tmp
+
+# Infra local de dev (Postgres embutido — scripts/dev-db.mjs)
+.local/

@@ -16,17 +16,23 @@ export async function createCreativesFromVariations(
     format: CreativeFormat;
     variations: CreativeCopy[];
     templateIds: string[];
+    // Fundos resolvidos 1x por briefing (foto real ou Flux), reusados em
+    // round-robin. Vazio = sem fundo (template renderiza sobre cor sólida).
+    backgrounds?: string[];
   },
 ): Promise<CreatedCreative[]> {
   if (input.templateIds.length === 0) {
     throw new DomainError('Nenhum template ativo para o formato solicitado.');
   }
 
+  const backgrounds = input.backgrounds ?? [];
   const created: CreatedCreative[] = [];
   for (let i = 0; i < input.variations.length; i += 1) {
     const copy = input.variations[i];
     const templateId = input.templateIds[i % input.templateIds.length];
     if (!copy || !templateId) continue;
+
+    const backgroundUrl = backgrounds.length > 0 ? backgrounds[i % backgrounds.length] : null;
 
     const creative = await db.creative.create({
       // organizationId injetado pela tenant extension.
@@ -37,6 +43,7 @@ export async function createCreativesFromVariations(
         status: CreativeStatus.COPY_READY,
         variationIndex: i,
         copy: copy as unknown as Prisma.InputJsonValue,
+        backgroundUrl,
       } as unknown as Prisma.CreativeUncheckedCreateInput,
       select: { id: true, variationIndex: true },
     });

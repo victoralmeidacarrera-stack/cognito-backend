@@ -3,7 +3,7 @@ import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
   {
-    ignores: ['dist/**', 'node_modules/**', 'prisma/migrations/**', 'templates/**'],
+    ignores: ['dist/**', 'node_modules/**', 'prisma/migrations/**', 'templates/**', 'scripts/**'],
   },
   eslint.configs.recommended,
   ...tseslint.configs.recommendedTypeChecked,

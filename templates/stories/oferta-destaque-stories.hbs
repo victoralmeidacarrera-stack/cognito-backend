@@ -19,6 +19,7 @@
       .scrim { position: absolute; inset: 0; background: linear-gradient(transparent 40%, rgba(0,0,0,0.85)); }
       .content { position: absolute; inset: 0; padding: 96px 72px; display: flex; flex-direction: column; justify-content: flex-end; }
       .headline { font-family: '{{brand.typography.heading}}', sans-serif; font-size: 96px; font-weight: 800; line-height: 1.05; }
+      .price { font-size: 64px; font-weight: 700; margin-top: 20px; }
       .cta { display: inline-block; margin-top: 40px; padding: 28px 56px; background: var(--accent); color: var(--primary); font-size: 44px; font-weight: 700; border-radius: 20px; text-align: center; }
       .disclaimer { font-size: 22px; opacity: 0.7; margin-top: 28px; }
     </style>
@@ -28,6 +29,7 @@
     <div class="scrim"></div>
     <div class="content">
       <h1 class="headline">{{headline}} {{emoji}}</h1>
+      {{#if price}}<div class="price">{{price}}</div>{{/if}}
       <span class="cta">{{cta}}</span>
       {{> disclaimer}}
     </div>

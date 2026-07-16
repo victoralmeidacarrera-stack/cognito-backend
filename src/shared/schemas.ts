@@ -4,7 +4,10 @@ import { z } from 'zod';
 // Schemas compartilhados (entrada/saída de API)
 // ──────────────────────────────────────────────
 
-export const cuidSchema = z.string().cuid();
+// Id opaco (Prisma gera cuid, mas o seed usa ids legíveis como 'veh_demo').
+// Não validamos o FORMATO: integridade referencial é papel do lookup/FK —
+// validar cuid aqui só impedia usar os dados do seed pela API.
+export const cuidSchema = z.string().min(1).max(64);
 
 export const idParamSchema = z.object({
   id: cuidSchema,

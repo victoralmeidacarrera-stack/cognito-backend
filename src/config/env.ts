@@ -21,13 +21,37 @@ const envSchema = z.object({
   DATABASE_URL: z.string().url(),
   REDIS_URL: z.string().url(),
 
-  // Anthropic
-  ANTHROPIC_API_KEY: z.string().min(1),
+  // ── Provedor de copy (IA de texto) ──
+  // 'anthropic' (default) usa o SDK da Anthropic com prompt caching.
+  // 'openai' usa QUALQUER API compatível com OpenAI chat/completions
+  // (OpenAI, DeepSeek, Groq, Gemini OpenAI-compat, Ollama local, ...):
+  //   COPY_PROVIDER=openai
+  //   LLM_BASE_URL=https://api.deepseek.com/v1   (ou http://localhost:11434/v1 p/ Ollama)
+  //   LLM_API_KEY=sk-...
+  //   LLM_MODEL=deepseek-chat
+  COPY_PROVIDER: z.enum(['anthropic', 'openai']).default('anthropic'),
+  LLM_BASE_URL: z.string().url().optional(),
+  LLM_API_KEY: z.string().optional(),
+  LLM_MODEL: z.string().optional(),
+
+  // Anthropic (usado quando COPY_PROVIDER=anthropic; opcional se usar outro provedor)
+  ANTHROPIC_API_KEY: z.string().optional(),
   ANTHROPIC_MODEL_BRIEFING: z.string().default('claude-sonnet-4-5'),
   ANTHROPIC_MODEL_VARIATIONS: z.string().default('claude-haiku-4-5-20251001'),
 
   // fal.ai (placeholder)
   FAL_API_KEY: z.string().optional(),
+
+  // Override do prompt do fundo Flux (ver modules/backgrounds/background-prompt.ts).
+  // Suporta o placeholder {vehicle} — substituído pela descrição do veículo.
+  FLUX_BACKGROUND_PROMPT: z.string().optional(),
+
+  // Composição foto real + cenário: recorta o carro da foto do banco e cola
+  // sobre uma cena vazia gerada pelo Flux. Default ligado (a ideia original);
+  // 'false' volta a usar a foto crua como fundo.
+  VEHICLE_COMPOSITE: z.enum(['true', 'false']).default('true'),
+  // Override do prompt da cena vazia usada na composição (sem carro).
+  FLUX_SCENE_PROMPT: z.string().optional(),
 
   // Cloudflare R2
   R2_ACCOUNT_ID: z.string().optional(),

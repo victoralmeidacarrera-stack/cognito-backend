@@ -1,12 +1,16 @@
 import { BriefingStatus, type Prisma } from '@prisma/client';
 import { type Job } from 'bullmq';
+import { isProduction } from '../config/env.js';
 import { logger } from '../config/logger.js';
 import { tenantPrisma } from '../config/tenant.js';
+import { resolveBriefingBackgrounds } from '../modules/backgrounds/backgrounds.service.js';
 import { createCreativesFromVariations } from '../modules/creatives/creatives.service.js';
 import {
   buildVariations,
+  devFallbackOutput,
   generateCopy,
   loadGenerationContext,
+  type GenerationResult,
 } from '../modules/generation/generation.service.js';
 import { generateCreativePayloadSchema } from '../modules/jobs/job-payloads.js';
 import {
@@ -25,7 +29,21 @@ export async function processGenerateCreative(job: Job): Promise<void> {
   try {
     const ctx = await loadGenerationContext(db, organizationId, briefingId);
 
-    const { output, usage, model } = await generateCopy(ctx);
+    let generation: GenerationResult;
+    try {
+      generation = await generateCopy(ctx);
+    } catch (err) {
+      // Fora de produção, Claude indisponível (sem chave/sem crédito) não trava
+      // o fluxo: usa copy determinística de fallback e segue o pipeline real.
+      if (isProduction) throw err;
+      log.warn({ err }, 'Claude indisponível — usando copy de fallback (dev)');
+      generation = {
+        output: devFallbackOutput(ctx),
+        usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 },
+        model: 'dev-fallback',
+      };
+    }
+    const { output, usage, model } = generation;
     log.info(
       {
         model,
@@ -35,7 +53,9 @@ export async function processGenerateCreative(job: Job): Promise<void> {
       },
       'copy gerada',
     );
-    await recordAiUsage({ organizationId, briefingId, model, usage });
+    if (model !== 'dev-fallback') {
+      await recordAiUsage({ organizationId, briefingId, model, usage });
+    }
 
     const templates = await db.template.findMany({
       where: { format: ctx.briefing.format, isActive: true },
@@ -43,12 +63,23 @@ export async function processGenerateCreative(job: Job): Promise<void> {
       select: { id: true },
     });
 
+    // Resolve os fundos uma vez por briefing (foto real → Flux → cor sólida);
+    // reusados em round-robin entre as variações. Best-effort (não quebra).
+    const backgrounds = await resolveBriefingBackgrounds(db, {
+      organizationId,
+      briefingId,
+      format: ctx.briefing.format,
+      vehicle: ctx.vehicle,
+    });
+    log.info({ backgrounds: backgrounds.length }, 'fundos resolvidos');
+
     const variations = buildVariations(output, ctx.briefing.requestedVariations);
     const creatives = await createCreativesFromVariations(db, {
       briefingId,
       format: ctx.briefing.format,
       variations,
       templateIds: templates.map((t) => t.id),
+      backgrounds,
     });
 
     await recordVariationUsage({ organizationId, briefingId, quantity: creatives.length });
