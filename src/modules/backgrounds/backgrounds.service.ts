@@ -30,6 +30,8 @@ export interface ResolveBackgroundsInput {
   briefingId: string;
   format: 'FEED' | 'STORIES';
   vehicle: Vehicle | null;
+  /** Prompt do fundo escrito pelo usuário no briefing (vence env/default). */
+  promptOverride?: string | null;
 }
 
 /**
@@ -106,7 +108,7 @@ async function composeVehicleBackgrounds(
   const cutoutUrl = await removeBackground(photoUrl);
   log.info({ briefingId: input.briefingId }, 'recorte do veículo pronto');
 
-  const prompt = buildEmptyScenePrompt();
+  const prompt = buildEmptyScenePrompt(input.promptOverride);
   log.info({ briefingId: input.briefingId, prompt }, 'prompt da cena vazia (composição)');
 
   const urls: string[] = [];
@@ -194,7 +196,7 @@ async function loadVehiclePhotoUrls(db: TenantPrisma, vehicleId: string): Promis
 /** Gera N fundos com o Flux e os sobe pro R2 (persistência > CDN temporária). */
 async function generateFluxBackgrounds(input: ResolveBackgroundsInput): Promise<string[]> {
   const { width, height } = backgroundSize(input.format);
-  const prompt = buildBackgroundPrompt(input.vehicle);
+  const prompt = buildBackgroundPrompt(input.vehicle, input.promptOverride);
   // Prompt final visível no log — facilita ajustar em background-prompt.ts
   // ou via FLUX_BACKGROUND_PROMPT no .env.
   log.info({ briefingId: input.briefingId, prompt }, 'prompt do fundo Flux');

@@ -8,6 +8,7 @@ import {
   applyRenderResult,
   markCreativeRenderFailed,
 } from '../modules/creatives/creatives.service.js';
+import { layoutToRenderVars, parseLayout } from '../modules/brand-books/layout.js';
 import { renderImagePayloadSchema } from '../modules/jobs/job-payloads.js';
 import { markJobCompleted, markJobFailed } from '../modules/jobs/jobs.service.js';
 import { renderAndUpload } from '../modules/render/render.service.js';
@@ -50,6 +51,8 @@ export async function processRenderImage(job: Job): Promise<void> {
 
     const copy = creative.copy as unknown as CreativeCopy;
     const priceCents = creative.briefing?.vehicle?.priceCents ?? null;
+    // Disposição do texto (posição/fonte/tamanho) definida no brand book.
+    const layout = layoutToRenderVars(parseLayout(brandBook?.layout));
     const data: Record<string, unknown> = {
       headline: copy.headline,
       cta: copy.cta,
@@ -61,6 +64,7 @@ export async function processRenderImage(job: Job): Promise<void> {
       // Preço do veículo do briefing (só renderiza se houver veículo com preço).
       price: priceCents != null ? formatPriceBRL(priceCents) : '',
       disclaimer: disclaimerFrom(org.factoryRestrictions),
+      layout,
       brand: brandBook
         ? {
             primaryColor: brandBook.primaryColor ?? '#0A2540',

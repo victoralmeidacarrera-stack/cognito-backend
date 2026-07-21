@@ -63,6 +63,11 @@ export async function processGenerateCreative(job: Job): Promise<void> {
       select: { id: true },
     });
 
+    // Prompt do fundo escrito pelo usuário no briefing (opcional).
+    const briefingInput = (ctx.briefing.input ?? {}) as Record<string, unknown>;
+    const promptOverride =
+      typeof briefingInput.backgroundPrompt === 'string' ? briefingInput.backgroundPrompt : null;
+
     // Resolve os fundos uma vez por briefing (foto real → Flux → cor sólida);
     // reusados em round-robin entre as variações. Best-effort (não quebra).
     const backgrounds = await resolveBriefingBackgrounds(db, {
@@ -70,6 +75,7 @@ export async function processGenerateCreative(job: Job): Promise<void> {
       briefingId,
       format: ctx.briefing.format,
       vehicle: ctx.vehicle,
+      promptOverride,
     });
     log.info({ backgrounds: backgrounds.length }, 'fundos resolvidos');
 
