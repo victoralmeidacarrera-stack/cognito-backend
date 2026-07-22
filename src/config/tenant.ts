@@ -33,6 +33,7 @@ type MutableArgs = {
   where?: Record<string, unknown>;
   data?: Record<string, unknown> | Record<string, unknown>[];
   create?: Record<string, unknown>;
+  update?: Record<string, unknown>;
 };
 
 function injectWhere(args: MutableArgs, organizationId: string): void {
@@ -40,10 +41,21 @@ function injectWhere(args: MutableArgs, organizationId: string): void {
 }
 
 function injectData(args: MutableArgs, organizationId: string): void {
+  // organizationId por ÚLTIMO: o tenant SEMPRE vence, um organizationId vindo
+  // do input do chamador nunca pode sobrescrever o do tenant (simétrico a injectWhere).
   if (Array.isArray(args.data)) {
-    args.data = args.data.map((row) => ({ organizationId, ...row }));
+    args.data = args.data.map((row) => ({ ...row, organizationId }));
   } else if (args.data) {
-    args.data = { organizationId, ...args.data };
+    args.data = { ...args.data, organizationId };
+  }
+}
+
+function sanitizeUpdateData(args: MutableArgs, organizationId: string): void {
+  // Update não pode REATRIBUIR a org: força organizationId do tenant por último,
+  // neutralizando qualquer `data: { organizationId: 'outra-org' }` vindo do input.
+  // Só age quando `data` existir e for objeto (não mexe se ausente).
+  if (args.data && !Array.isArray(args.data)) {
+    args.data = { ...args.data, organizationId };
   }
 }
 
@@ -72,16 +84,25 @@ export function tenantPrisma(organizationId: string) {
             case 'upsert':
               injectWhere(mutable, organizationId);
               if (mutable.create) {
-                mutable.create = { organizationId, ...mutable.create };
+                // organizationId por último: o tenant sempre vence (não sobrescrevível).
+                mutable.create = { ...mutable.create, organizationId };
               }
+              // O ramo `update` do upsert também não pode reatribuir a org.
+              if (mutable.update && !Array.isArray(mutable.update)) {
+                mutable.update = { ...mutable.update, organizationId };
+              }
+              break;
+            case 'update':
+            case 'updateMany':
+              // Update não pode reatribuir a org: where escopado + org fixada no data.
+              injectWhere(mutable, organizationId);
+              sanitizeUpdateData(mutable, organizationId);
               break;
             case 'findUnique':
             case 'findUniqueOrThrow':
             case 'findFirst':
             case 'findFirstOrThrow':
             case 'findMany':
-            case 'update':
-            case 'updateMany':
             case 'delete':
             case 'deleteMany':
             case 'count':
