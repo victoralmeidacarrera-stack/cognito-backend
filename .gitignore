@@ -34,3 +34,7 @@ coverage/
 
 # Infra local de dev (Postgres embutido — scripts/dev-db.mjs)
 .local/
+
+# Config local do Claude Code (pode conter permissões/segredos específicos da máquina)
+.claude/settings.local.json
+.claude/worktrees/
