@@ -178,6 +178,14 @@ model BrandBook {
   typography     Json    @default("{}") // { heading, body, ... }
   logoR2Key      String?
 
+  // Disposição do texto na peça (posição/fonte/tamanho) aplicada no render.
+  // Shape validado por zod em modules/brand-books/layout.ts.
+  layout Json @default("{}")
+
+  // Imagens de referência anexadas (URLs). Guiam o ajuste do layout e podem
+  // ser analisadas pela IA (Claude vision) para pré-preencher a disposição.
+  referenceImages Json @default("[]") // string[] de URLs
+
   // Tom de voz / diretrizes — bloco grande e estável (prompt caching)
   toneOfVoice String? @db.Text
   guidelines  String? @db.Text

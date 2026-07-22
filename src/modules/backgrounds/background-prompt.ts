@@ -52,8 +52,14 @@ export const DEFAULT_EMPTY_SCENE_PROMPT =
   'lower half for product placement, photorealistic, ultra detailed, ' +
   'no cars, no vehicles, no people';
 
-/** Prompt da cena vazia (composição foto real + cenário Flux). */
-export function buildEmptyScenePrompt(): string {
+/**
+ * Prompt da cena vazia (composição foto real + cenário Flux).
+ * Precedência: override (campo do briefing, escrito pelo usuário) >
+ * FLUX_SCENE_PROMPT (env) > default.
+ */
+export function buildEmptyScenePrompt(override?: string | null): string {
+  const custom = override?.trim();
+  if (custom) return custom;
   return env.FLUX_SCENE_PROMPT ?? DEFAULT_EMPTY_SCENE_PROMPT;
 }
 
@@ -69,8 +75,12 @@ export function describeVehicle(vehicle: Vehicle): string {
  * FLUX_BACKGROUND_PROMPT (env, com {vehicle}) > DEFAULT_VEHICLE_PROMPT /
  * DEFAULT_SCENE_PROMPT conforme haja veículo.
  */
-export function buildBackgroundPrompt(vehicle: Vehicle | null): string {
+export function buildBackgroundPrompt(vehicle: Vehicle | null, override?: string | null): string {
   const vehicleText = vehicle ? describeVehicle(vehicle) : '';
+
+  // Override do briefing (escrito pelo usuário no frontend) vence tudo.
+  const custom = override?.trim();
+  if (custom) return custom.replaceAll('{vehicle}', vehicleText);
 
   if (env.FLUX_BACKGROUND_PROMPT) {
     return env.FLUX_BACKGROUND_PROMPT.replaceAll('{vehicle}', vehicleText);
