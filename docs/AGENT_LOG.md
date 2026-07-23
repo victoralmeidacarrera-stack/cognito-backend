@@ -18,6 +18,27 @@ Formato de cada entrada:
 
 ---
 
+## 2026-07-23 00:00 — Consolidação da `main` + testes do isolamento multi-tenant
+
+- Status: ✅ aprovado
+- Contexto: sessão de revisão do estado do projeto. Trabalho represado em branches
+  locais não publicadas foi salvo, `main` consolidada e a lacuna de cobertura mais
+  crítica (multi-tenant) coberta.
+- Arquivos:
+  - `tests/tenant.test.ts` (novo) — 19 testes cobrindo a extension `tenantPrisma`:
+    where escopado em todas as leituras, `create`/`createMany` carimbando a org,
+    `update`/`updateMany`/`upsert` não-reatribuindo org, `Organization` fora do
+    tenant, e orgs distintas não se enxergando. Sem banco: fake client que
+    implementa o contrato de query-extension e captura os args finais.
+  - `src/app.ts` — fix de CORS recuperado de worktree órfã (barra final na origem).
+- Revisão: teste de mutação — inverter a ordem do spread em `sanitizeUpdateData`
+  quebra exatamente os 2 testes de reatribuição de org (os testes têm dentes).
+- Rodadas de correção: 1 (primeira versão do teste usava `any`, reprovado pelo lint
+  e por `noUncheckedIndexedAccess`; retipado com interfaces explícitas).
+- typecheck/lint: passou (tsc limpo, eslint limpo, 45/45 testes — eram 26).
+
+---
+
 ## 2026-07-22 00:45 — Hardening multi-tenant: organizationId não-reatribuível em todas as escritas
 
 - Status: ✅ aprovado
