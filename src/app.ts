@@ -33,7 +33,13 @@ export async function buildApp(): Promise<FastifyInstance> {
   app.setSerializerCompiler(serializerCompiler);
 
   // CORS: lista do env em prod; reflete a origem em dev.
-  const origin = env.CORS_ORIGINS ? env.CORS_ORIGINS.split(',').map((o) => o.trim()) : true;
+  // Normaliza cada origem removendo barra final — o Origin do navegador nunca
+  // tem barra, então `https://app.vercel.app/` no env quebraria o match.
+  const origin = env.CORS_ORIGINS
+    ? env.CORS_ORIGINS.split(',')
+        .map((o) => o.trim().replace(/\/+$/, ''))
+        .filter(Boolean)
+    : true;
 
   // Segurança / infra HTTP
   await app.register(helmet, { contentSecurityPolicy: false });
