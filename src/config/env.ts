@@ -103,5 +103,17 @@ export const isProduction = env.NODE_ENV === 'production';
 export const isDevelopment = env.NODE_ENV === 'development';
 export const isTest = env.NODE_ENV === 'test';
 
-// Bypass de auth: nunca em produção; em dev/test o default é ligado.
-export const authDevBypass = !isProduction && (env.AUTH_DEV_BYPASS ?? 'true') === 'true';
+// Bypass de auth. Em dev/test o default é ligado; em produção fica DESLIGADO
+// por padrão e só liga se AUTH_DEV_BYPASS=true for setado explicitamente
+// (demo privado sem Clerk — quem tem a URL entra como admin do seed).
+export const authDevBypass = isProduction
+  ? env.AUTH_DEV_BYPASS === 'true'
+  : (env.AUTH_DEV_BYPASS ?? 'true') === 'true';
+
+if (isProduction && authDevBypass) {
+  console.warn(
+    '\n⚠️  AUTH_DEV_BYPASS=true em PRODUÇÃO: a API está aberta sem login ' +
+      '(qualquer request entra como o admin do seed). Use só para demo privado; ' +
+      'NÃO divulgue a URL. Ligue o Clerk para fechar de verdade.\n',
+  );
+}
