@@ -22,6 +22,7 @@ npm run typecheck    # tsc --noEmit   (rode SEMPRE antes de commitar)
 npm test             # vitest
 npm run lint         # eslint
 npm run prisma:deploy / db:seed / prisma:studio
+npm run templates:preview   # renderiza os 16 templates em .local/previews/ (sem infra)
 ```
 
 Pré-commit (husky+lint-staged) roda eslint --fix + prettier + `prisma format`.
@@ -45,6 +46,9 @@ a API sobe mesmo assim (Prisma/Redis são lazy; `/health/ready` mostra degradado
   injeta `organizationId` em todo query — por isso os `create` precisam de cast
   `as Prisma.XUncheckedCreateInput` (o org é injetado em runtime).
 - ESM NodeNext: imports relativos terminam em `.js`.
+- **Render**: o `data` do Handlebars é montado só em `modules/render/render-data.ts`
+  (worker e script de preview usam o mesmo builder). Template novo entra no
+  catálogo `modules/render/template-catalog.ts` — ver `docs/TEMPLATES.md`.
 
 ## Decisões a lembrar
 
@@ -66,6 +70,14 @@ validado (falta saldo na conta fal). **Flux fiado no pipeline (opção C):**
 2 fundos Flux persistidos no R2 → senão cor sólida), reusados round-robin entre as
 variações. É **best-effort**: Flux sem saldo/timeout cai pra cor sólida sem quebrar
 a geração. O render passa `backgroundUrl` como `photoUrl` (templates já suportavam).
-**Pendente:** validar ponta-a-ponta com saldo real na fal; (nice-to-have) passar
-`price` do veículo pro template no render. Ver `docs/RUNBOOK.md` (ciclo real) e
-`docs/DEPLOY.md` (Neon+Railway+Vercel).
+**Biblioteca de templates: 2 → 16** (8 famílias × feed/stories) — oferta-destaque,
+seminovo, financiamento, feirão, novidade, entrega-cliente, destaque-clean,
+test-drive. Catálogo em `modules/render/template-catalog.ts` é a fonte única; o
+seed e `POST /templates/sync` provisionam por org; o round-robin do worker de
+geração já distribui as variações entre todos. `render-data.ts` passou a expor
+`vehicle.*`, `offer.*` (só o que veio do briefing — nunca calcula parcela),
+`store.*`, `canvas.*` e cores de contraste (`brand.onPrimary/onAccent`).
+Guia completo em `docs/TEMPLATES.md`.
+
+**Pendente:** validar ponta-a-ponta com saldo real na fal. Ver `docs/RUNBOOK.md`
+(ciclo real) e `docs/DEPLOY.md` (Neon+Railway+Vercel).
