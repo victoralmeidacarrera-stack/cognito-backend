@@ -174,6 +174,11 @@ function readCell(value: unknown): CellText {
  * o preço entrava 1000x menor e SEM erro no relatório (R$ 89.900 → R$ 89,90) e ia
  * parar num criativo publicado — preço errado em anúncio é problema de CDC.
  * "89,90" (2 casas) continua decimal: só 3 dígitos exatos viram milhar.
+ *
+ * A ambiguidade não some, só troca de lado: sem dica de locale, "89900,000" é
+ * lido como 89.900.000 (era 89.900) e "12345,678" difere de "12.345,678" por
+ * 1000x. Preço/km com 3 casas decimais é muito menos provável que planilha
+ * en-US, então a troca vale — mas a regra NÃO é universalmente correta.
  */
 function parseNumber(raw: string): number | null {
   const cleaned = raw.replace(/[\s\u00a0]/g, '').replace(/[^0-9,.-]/g, '');
@@ -250,10 +255,20 @@ function mapHeader(sheet: ExcelJS.Worksheet): Map<number, VehicleField> {
       `Cabeçalho não reconhecido: a primeira linha da planilha precisa conter as colunas "Marca" e "Modelo". ${TEMPLATE_HINT}`,
     );
   }
-  if (!taken.has('make') || !taken.has('model')) {
-    const faltando = taken.has('make') ? 'Modelo' : 'Marca';
+  // Marca, Modelo e Ano são os três obrigatórios do createVehicleSchema. Faltar
+  // qualquer um deles reprova 100% das linhas, então avisar no cabeçalho é a
+  // única mensagem útil — o relatório linha a linha só repetiria
+  // "Campo obrigatório" mil vezes sem dizer que faltava uma COLUNA.
+  const obrigatorias: [VehicleField, string][] = [
+    ['make', 'Marca'],
+    ['model', 'Modelo'],
+    ['year', 'Ano'],
+  ];
+  const faltando = obrigatorias.filter(([field]) => !taken.has(field)).map(([, rotulo]) => rotulo);
+  if (faltando.length > 0) {
+    const lista = faltando.map((rotulo) => `"${rotulo}"`).join(', ');
     throw new DomainError(
-      `A planilha não tem a coluna "${faltando}", que é obrigatória para cadastrar um veículo. ${TEMPLATE_HINT}`,
+      `A planilha não tem ${faltando.length > 1 ? 'as colunas' : 'a coluna'} ${lista}, ${faltando.length > 1 ? 'que são obrigatórias' : 'que é obrigatória'} para cadastrar um veículo. ${TEMPLATE_HINT}`,
     );
   }
   return columns;
@@ -379,11 +394,11 @@ export async function parseVehicleImport(file: Buffer): Promise<ParsedVehicleImp
   const sheet = workbook.worksheets[0];
   if (!sheet) throw new DomainError(`A planilha não tem nenhuma aba com dados. ${TEMPLATE_HINT}`);
 
-  // Aborta pelo tamanho declarado ANTES de iterar. O teto por linha (abaixo) já
-  // interrompe o loop, mas só depois de montar `cells` linha a linha; com uma
-  // planilha de centenas de milhares de linhas isso é trabalho e heap jogados
-  // fora. `rowCount` inclui cabeçalho e linhas vazias, por isso a folga.
-  if (sheet.rowCount > MAX_IMPORT_ROWS * 2) {
+  // Aborta pelo tamanho declarado ANTES de iterar. `actualRowCount` (e não
+  // `rowCount`): uma observação solta na célula A6000 faz `rowCount` valer 6000
+  // numa planilha de 10 veículos, e o arquivo era recusado com "divida em partes
+  // menores" — falso e sem saída, porque dividir não muda o índice da célula.
+  if (sheet.actualRowCount > MAX_IMPORT_ROWS * 2) {
     throw new DomainError(
       `A planilha tem mais de ${MAX_IMPORT_ROWS} linhas. Divida o arquivo em partes menores e importe uma de cada vez.`,
     );

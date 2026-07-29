@@ -18,6 +18,39 @@ Formato de cada entrada:
 
 ---
 
+## 2026-07-28 22:50 — Revisão das duas features + correção dos achados
+
+- Status: ✅ aprovado com correções aplicadas
+- Contexto: o Victor cobrou o que o CLAUDE.md já manda — **`code-reviewer` é
+  sempre obrigatório**, mesmo quando a sessão só faz shipping de código escrito
+  antes. As duas features tinham ido para branch e PR sem revisão nesta forma
+  final.
+- Revisão (rodada 1): o `code-reviewer` leu os 4 commits / 39 arquivos, rodou
+  lint e a suíte, renderizou os 16 templates com copy no **teto do schema** e
+  sondou o parser com planilhas sujas geradas na hora.
+- Achados que **bloqueavam** o merge, todos confirmados por mim antes de corrigir:
+  1. `parseNumber` lia vírgula de milhar en-US como decimal — "89,900" → 89,9 e
+     "45,000" → 45 km, **sem erro no relatório**. Um carro de R$ 89.900 iria ao
+     Instagram como R$ 89,90. Confirmei rodando a função isolada.
+  2. `seminovo.hbs` decapitava a primeira linha do headline (altura fixa +
+     `overflow: hidden` + `justify-content: flex-end`) e publicava assim.
+  3. `destaque-clean.hbs`: eyebrow (make+model+trim) passava sob a caixa de preço.
+  4. `financiamento.hbs`: sub_headline sumia debaixo do CTA absoluto.
+- Não-bloqueantes corrigidos na mesma rodada: P2002 virando 500 no sync de
+  templates (agora `upsert`), `LOG_PRETTY` que **ainda** inferia de NODE_ENV
+  (o comentário afirmava o contrário — eu tinha dado esse ponto como resolvido
+  antes, errado), falha de escrita sem log e sem abort, retry duplicando
+  catálogo sem `externalId`, teto de linhas/erros, mensagem de cabeçalho, taxa
+  aninhada na entrada, `as never` no script de preview.
+- Arquivos: `import.parser.ts`, `import.service.ts`, `template-catalog.ts`,
+  `config/logger.ts`, 4 `.hbs`, `preview-templates.ts`, `tests/vehicles-import.test.ts`.
+- Ferramenta nova: `npm run templates:preview -- --copy-longa` (todo texto no
+  teto do schema). É o cenário que teria pego os três templates quebrados.
+- Rodadas de correção: 1 (segunda rodada de revisão sobre o commit `43ff13b`)
+- typecheck/lint: passou · testes: 83 (+6) · 16 templates nos 3 cenários
+
+---
+
 ## 2026-07-28 21:20 — Shipping: templates + import saem da working tree para branches
 
 - Status: ✅ aprovado

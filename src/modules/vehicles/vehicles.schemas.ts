@@ -7,8 +7,13 @@ export const createVehicleSchema = z.object({
   trim: z.string().max(100).optional(),
   year: z.number().int().min(1950).max(2100),
   modelYear: z.number().int().min(1950).max(2100).optional(),
-  priceCents: z.number().int().nonnegative().optional(),
-  mileageKm: z.number().int().nonnegative().optional(),
+  // Teto = int4 do Postgres (`Int` no schema.prisma). Sem ele, um preço em 3
+  // casas decimais na planilha ("89900,000" → 8,99e9 centavos) estourava a
+  // coluna só na hora do INSERT: virava falha de escrita opaca em vez de erro
+  // de linha com motivo, e 10 linhas assim disparavam o abort por "banco fora
+  // do ar" — que nunca se resolveria sozinho. R$ 21 milhões cobre qualquer carro.
+  priceCents: z.number().int().nonnegative().max(2_147_483_647).optional(),
+  mileageKm: z.number().int().nonnegative().max(2_147_483_647).optional(),
   color: z.string().max(60).optional(),
   fuel: z.string().max(40).optional(),
   transmission: z.string().max(40).optional(),

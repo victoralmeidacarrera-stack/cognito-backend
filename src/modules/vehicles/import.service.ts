@@ -108,12 +108,31 @@ export async function importVehiclesFromXlsx(
       logger.warn({ err: error, row, consecutiveFailures }, 'falha ao gravar linha do import');
 
       if (consecutiveFailures >= MAX_CONSECUTIVE_WRITE_FAILURES) {
+        // `error` (não `warn`): aqui o import inteiro morreu. Nota: o projeto
+        // não tem captureException do Sentry, então isto é stdout do Railway —
+        // não é alerta. Ver docs/RUNBOOK.md.
+        logger.error(
+          { err: error, inserted, updated },
+          'import abortado após falhas de escrita consecutivas',
+        );
         throw new DomainError(
-          'A importação foi interrompida: não foi possível gravar no banco de dados. Nenhuma linha adicional foi processada — tente novamente em alguns minutos.',
+          `A importação foi interrompida: não foi possível gravar no banco de dados. ${inserted + updated} veículo(s) chegaram a ser salvos antes da falha; o restante não foi processado. Tente novamente em alguns minutos.`,
         );
       }
       errors.push({ row, field: null, message: 'Não foi possível salvar esta linha.' });
     }
+  }
+
+  // O relatório é truncado, mas os contadores acima continuam completos — e a
+  // truncagem precisa aparecer: sem a linha sintética, `skipped: 800` com 200
+  // erros listados parecia bug do sistema, não limite de exibição.
+  const reported = errors.slice(0, MAX_REPORTED_ERRORS);
+  if (errors.length > MAX_REPORTED_ERRORS) {
+    reported.push({
+      row: 0,
+      field: null,
+      message: `... e mais ${errors.length - MAX_REPORTED_ERRORS} linha(s) com erro. Corrija as listadas acima e importe de novo para ver o restante.`,
+    });
   }
 
   return {
@@ -121,8 +140,7 @@ export async function importVehiclesFromXlsx(
     inserted,
     updated,
     skipped: total - inserted - updated,
-    // O relatório é truncado, mas os contadores acima continuam completos.
-    errors: errors.slice(0, MAX_REPORTED_ERRORS),
+    errors: reported,
   };
 }
 

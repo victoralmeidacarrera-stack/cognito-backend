@@ -99,14 +99,31 @@ describe('parseVehicleImport — cabeçalho', () => {
     await expect(parseVehicleImport(buffer)).rejects.toThrow(/cabeçalho não reconhecido/i);
   });
 
-  it('diz qual coluna obrigatória falta quando só uma das duas existe', async () => {
-    // Antes o cabeçalho passava com só uma delas e o dono da loja recebia um
+  it('diz quais colunas obrigatórias faltam em vez de errar todas as linhas', async () => {
+    // Antes o cabeçalho passava sem uma obrigatória e o dono da loja recebia um
     // relatório com TODAS as linhas em "Campo obrigatório", sem entender o motivo.
     const semMarca = await buildXlsx(sheet(['Modelo', 'Ano'], ['Nivus', 2024]));
     await expect(parseVehicleImport(semMarca)).rejects.toThrow(/coluna "Marca"/i);
 
     const semModelo = await buildXlsx(sheet(['Marca', 'Ano'], ['VW', 2024]));
     await expect(parseVehicleImport(semModelo)).rejects.toThrow(/coluna "Modelo"/i);
+
+    // `year` também é obrigatório no createVehicleSchema.
+    const semAno = await buildXlsx(sheet(['Marca', 'Modelo'], ['VW', 'Nivus']));
+    await expect(parseVehicleImport(semAno)).rejects.toThrow(/coluna "Ano"/i);
+
+    const semNada = await buildXlsx(sheet(['Marca', 'Cor'], ['VW', 'Prata']));
+    await expect(parseVehicleImport(semNada)).rejects.toThrow(/colunas "Modelo", "Ano"/i);
+  });
+
+  it('recusa preço/km acima do int4 do Postgres como erro de linha, não falha de escrita', async () => {
+    // Sem o teto no schema, o INSERT é que estourava — virava falha opaca e
+    // podia disparar o abort por "banco fora do ar".
+    const caro = await parse(
+      sheet(['Marca', 'Modelo', 'Ano', 'Preço'], ['VW', 'Nivus', 2024, '99999999999']),
+    );
+    expect(caro.rows).toHaveLength(0);
+    expect(caro.errors[0]).toMatchObject({ row: 2, field: 'priceCents' });
   });
 
   it('recusa arquivo que não é .xlsx sem vazar exceção do exceljs', async () => {
