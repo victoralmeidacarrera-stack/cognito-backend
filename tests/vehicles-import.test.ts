@@ -99,6 +99,16 @@ describe('parseVehicleImport — cabeçalho', () => {
     await expect(parseVehicleImport(buffer)).rejects.toThrow(/cabeçalho não reconhecido/i);
   });
 
+  it('diz qual coluna obrigatória falta quando só uma das duas existe', async () => {
+    // Antes o cabeçalho passava com só uma delas e o dono da loja recebia um
+    // relatório com TODAS as linhas em "Campo obrigatório", sem entender o motivo.
+    const semMarca = await buildXlsx(sheet(['Modelo', 'Ano'], ['Nivus', 2024]));
+    await expect(parseVehicleImport(semMarca)).rejects.toThrow(/coluna "Marca"/i);
+
+    const semModelo = await buildXlsx(sheet(['Marca', 'Ano'], ['VW', 2024]));
+    await expect(parseVehicleImport(semModelo)).rejects.toThrow(/coluna "Modelo"/i);
+  });
+
   it('recusa arquivo que não é .xlsx sem vazar exceção do exceljs', async () => {
     await expect(parseVehicleImport(Buffer.from('isto não é uma planilha'))).rejects.toThrow(
       /planilha/i,
@@ -143,6 +153,38 @@ describe('parseVehicleImport — valores', () => {
     for (const km of ['45.000 km', '45000', 45000, '45.000']) {
       expect((await parse(kmSheet(km))).rows[0]?.data.mileageKm).toBe(45_000);
     }
+  });
+
+  // Regressão: a vírgula de milhar en-US era lida como decimal e o preço entrava
+  // 1000x menor SEM erro no relatório — R$ 89.900 virava R$ 89,90 num criativo
+  // publicado. Export de DMS que passou por Google Sheets/LibreOffice traz isso.
+  it('lê vírgula de milhar (en-US) como milhar, não como decimal', async () => {
+    expect((await parse(priceSheet('89,900'))).rows[0]?.data.priceCents).toBe(8_990_000);
+    expect((await parse(priceSheet('R$ 89,900'))).rows[0]?.data.priceCents).toBe(8_990_000);
+    expect((await parse(priceSheet('1,299,000'))).rows[0]?.data.priceCents).toBe(129_900_000);
+
+    const kmSheet = (km: Cell): [number, Cell[]][] =>
+      sheet(['Marca', 'Modelo', 'Ano', 'KM'], ['VW', 'Nivus', 2024, km]);
+    expect((await parse(kmSheet('45,000'))).rows[0]?.data.mileageKm).toBe(45_000);
+  });
+
+  it('mantém a vírgula decimal de verdade (2 casas) como decimal', async () => {
+    // Só 3 dígitos exatos após o separador viram milhar; "89,90" é R$ 89,90.
+    expect((await parse(priceSheet('89,90'))).rows[0]?.data.priceCents).toBe(8_990);
+    expect((await parse(priceSheet('R$ 1.234,56'))).rows[0]?.data.priceCents).toBe(123_456);
+  });
+
+  it('recusa km e ano fracionários em vez de arredondar em silêncio', async () => {
+    // Fracionário aqui é sintoma de separador lido errado, não de dado "quebrado".
+    const kmSheet = (km: Cell): [number, Cell[]][] =>
+      sheet(['Marca', 'Modelo', 'Ano', 'KM'], ['VW', 'Nivus', 2024, km]);
+    const km = await parse(kmSheet('1,5'));
+    expect(km.rows).toHaveLength(0);
+    expect(km.errors[0]).toMatchObject({ row: 2, field: 'mileageKm' });
+
+    const year = await parse(sheet(['Marca', 'Modelo', 'Ano'], ['VW', 'Nivus', '2024,5']));
+    expect(year.rows).toHaveLength(0);
+    expect(year.errors[0]).toMatchObject({ row: 2, field: 'year' });
   });
 
   it('mapeia todas as variantes de condição e erra na desconhecida', async () => {
@@ -431,5 +473,34 @@ describe('importVehiclesFromXlsx', () => {
     expect(report.errors).toHaveLength(1);
     expect(report.errors[0]).toMatchObject({ row: 3, field: null });
     expect(report.errors[0]?.message).toContain('salvar');
+  });
+
+  it('aborta quando a escrita falha em série (banco fora do ar, não linha ruim)', async () => {
+    // 10 falhas seguidas: devolver 200 com "N linhas não puderam ser salvas"
+    // mentiria para o usuário e não alertaria ninguém.
+    const { db } = fakeDb();
+    const explode = db.vehicle as unknown as { create: () => Promise<{ id: string }> };
+    explode.create = () => Promise.reject(new Error('connection terminated'));
+
+    const rows = Array.from(
+      { length: 15 },
+      (_, i) => ['VW', 'Nivus', 2024, `EST-${i}`] as (string | number)[],
+    );
+    const file = await catalogXlsx(...rows);
+
+    await expect(importVehiclesFromXlsx(db, file, { dryRun: false })).rejects.toThrow(
+      /interrompida/i,
+    );
+  });
+
+  it('exige a coluna ID Externo em planilha grande (senão o retry duplica o estoque)', async () => {
+    const { db } = fakeDb();
+    // 201 linhas sem nenhum externalId: sem chave, reenviar recria tudo.
+    const rows = Array.from({ length: 201 }, () => ['VW', 'Nivus', 2024, ''] as (string | number)[]);
+    const file = await catalogXlsx(...rows);
+
+    await expect(importVehiclesFromXlsx(db, file, { dryRun: true })).rejects.toThrow(
+      /ID Externo/i,
+    );
   });
 });

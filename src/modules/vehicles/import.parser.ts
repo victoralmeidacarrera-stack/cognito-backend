@@ -165,8 +165,15 @@ function readCell(value: unknown): CellText {
 
 /**
  * Número em pt-BR ou en-US. Com os dois separadores, o ÚLTIMO é o decimal;
- * com só um tipo repetido, é separador de milhar; ponto sozinho seguido de
- * exatamente 3 dígitos até o fim também é milhar ("89.900" = oitenta e nove mil).
+ * com só um tipo repetido, é separador de milhar; um separador sozinho seguido
+ * de exatamente 3 dígitos até o fim também é milhar — vale para os DOIS símbolos
+ * ("89.900" e "89,900" são ambos oitenta e nove mil).
+ *
+ * A simetria importa: export de DMS que passou por Google Sheets/LibreOffice em
+ * locale en-US traz "89,900" e "45,000" como texto. Lendo a vírgula como decimal,
+ * o preço entrava 1000x menor e SEM erro no relatório (R$ 89.900 → R$ 89,90) e ia
+ * parar num criativo publicado — preço errado em anúncio é problema de CDC.
+ * "89,90" (2 casas) continua decimal: só 3 dígitos exatos viram milhar.
  */
 function parseNumber(raw: string): number | null {
   const cleaned = raw.replace(/[\s\u00a0]/g, '').replace(/[^0-9,.-]/g, '');
@@ -182,8 +189,8 @@ function parseNumber(raw: string): number | null {
         ? cleaned.replace(/\./g, '').replace(',', '.')
         : cleaned.replace(/,/g, '');
   } else if (lastComma >= 0) {
-    normalized =
-      cleaned.indexOf(',') === lastComma ? cleaned.replace(',', '.') : cleaned.replace(/,/g, '');
+    const isThousands = cleaned.indexOf(',') !== lastComma || /,\d{3}$/.test(cleaned);
+    normalized = isThousands ? cleaned.replace(/,/g, '') : cleaned.replace(',', '.');
   } else if (lastDot >= 0) {
     const isThousands = cleaned.indexOf('.') !== lastDot || /\.\d{3}$/.test(cleaned);
     normalized = isThousands ? cleaned.replace(/\./g, '') : cleaned;
@@ -234,9 +241,19 @@ function mapHeader(sheet: ExcelJS.Worksheet): Map<number, VehicleField> {
     columns.set(colNumber, field);
   });
 
+  // Basta UMA das duas para o cabeçalho ser reconhecível; a outra vira erro por
+  // linha ("Campo obrigatório"). A mensagem precisa dizer isso, senão o dono da
+  // loja manda uma planilha só com "Modelo", ela passa, e ele recebe um relatório
+  // com todas as linhas erradas sem entender que faltava uma coluna.
   if (!taken.has('make') && !taken.has('model')) {
     throw new DomainError(
-      `Cabeçalho não reconhecido: a primeira linha da planilha precisa conter ao menos as colunas "Marca" e "Modelo". ${TEMPLATE_HINT}`,
+      `Cabeçalho não reconhecido: a primeira linha da planilha precisa conter as colunas "Marca" e "Modelo". ${TEMPLATE_HINT}`,
+    );
+  }
+  if (!taken.has('make') || !taken.has('model')) {
+    const faltando = taken.has('make') ? 'Modelo' : 'Marca';
+    throw new DomainError(
+      `A planilha não tem a coluna "${faltando}", que é obrigatória para cadastrar um veículo. ${TEMPLATE_HINT}`,
     );
   }
   return columns;
@@ -275,8 +292,10 @@ function parseRow(
     const { text, number } = cell(field);
     if (!text) continue;
     const parsed = number ?? parseNumber(text);
-    if (parsed === null) fail(field, `Ano inválido: "${text}".`);
-    else raw[field] = Math.round(parsed);
+    // Fracionário aqui é sintoma de separador mal interpretado, não de ano
+    // "quebrado": arredondar em silêncio esconderia o problema do usuário.
+    if (parsed === null || !Number.isInteger(parsed)) fail(field, `Ano inválido: "${text}".`);
+    else raw[field] = parsed;
   }
 
   const price = cell('priceCents');
@@ -290,8 +309,10 @@ function parseRow(
   const mileage = cell('mileageKm');
   if (mileage.text) {
     const km = mileage.number ?? parseNumber(mileage.text);
-    if (km === null) fail('mileageKm', `Quilometragem inválida: "${mileage.text}".`);
-    else raw.mileageKm = Math.round(km);
+    // Idem ano: "1,5" virando 2 km mascarava separador lido errado.
+    if (km === null || !Number.isInteger(km))
+      fail('mileageKm', `Quilometragem inválida: "${mileage.text}".`);
+    else raw.mileageKm = km;
   }
 
   const condition = cell('condition');
@@ -357,6 +378,16 @@ export async function parseVehicleImport(file: Buffer): Promise<ParsedVehicleImp
 
   const sheet = workbook.worksheets[0];
   if (!sheet) throw new DomainError(`A planilha não tem nenhuma aba com dados. ${TEMPLATE_HINT}`);
+
+  // Aborta pelo tamanho declarado ANTES de iterar. O teto por linha (abaixo) já
+  // interrompe o loop, mas só depois de montar `cells` linha a linha; com uma
+  // planilha de centenas de milhares de linhas isso é trabalho e heap jogados
+  // fora. `rowCount` inclui cabeçalho e linhas vazias, por isso a folga.
+  if (sheet.rowCount > MAX_IMPORT_ROWS * 2) {
+    throw new DomainError(
+      `A planilha tem mais de ${MAX_IMPORT_ROWS} linhas. Divida o arquivo em partes menores e importe uma de cada vez.`,
+    );
+  }
 
   const columns = mapHeader(sheet);
   const result: ParsedVehicleImport = { rows: [], errors: [] };

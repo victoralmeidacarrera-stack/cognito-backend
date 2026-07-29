@@ -157,12 +157,21 @@ export async function syncOrganizationTemplates(
   let created = 0;
   let updated = 0;
 
-  for (const template of TEMPLATE_CATALOG) {
-    const existing = await prisma.template.findFirst({
-      where: { organizationId, slug: template.slug, version: 1 },
-      select: { id: true },
-    });
+  // Uma query para saber o que já existe; o resto é upsert. Antes era
+  // findFirst + create por template (2 round-trips × 16) e, pior, com janela de
+  // corrida: dois cliques no botão de sync (ou seed concorrente) violavam o
+  // unique (organizationId, slug, version), e o P2002 do Prisma não é AppError
+  // — saía como 500 "Erro interno" na cara do usuário.
+  const existingSlugs = new Set(
+    (
+      await prisma.template.findMany({
+        where: { organizationId, version: 1, slug: { in: TEMPLATE_CATALOG.map((t) => t.slug) } },
+        select: { slug: true },
+      })
+    ).map((template) => template.slug),
+  );
 
+  for (const template of TEMPLATE_CATALOG) {
     const fields = {
       name: template.name,
       format: template.format,
@@ -171,15 +180,16 @@ export async function syncOrganizationTemplates(
       variablesSchema: variablesSchemaOf(template),
     };
 
-    if (existing) {
-      await prisma.template.update({ where: { id: existing.id }, data: fields });
-      updated += 1;
-    } else {
-      await prisma.template.create({
-        data: { ...fields, organizationId, slug: template.slug, version: 1 },
-      });
-      created += 1;
-    }
+    await prisma.template.upsert({
+      where: {
+        organizationId_slug_version: { organizationId, slug: template.slug, version: 1 },
+      },
+      update: fields,
+      create: { ...fields, organizationId, slug: template.slug, version: 1 },
+    });
+
+    if (existingSlugs.has(template.slug)) updated += 1;
+    else created += 1;
   }
 
   return { created, updated, total: TEMPLATE_CATALOG.length };

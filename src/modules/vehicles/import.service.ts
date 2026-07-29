@@ -1,7 +1,28 @@
 import ExcelJS from 'exceljs';
 import { type Prisma } from '@prisma/client';
 import { type TenantPrisma } from '../../config/tenant.js';
+import { logger } from '../../config/logger.js';
+import { DomainError } from '../../shared/errors.js';
 import { type ImportRowError, parseVehicleImport } from './import.parser.js';
+
+/**
+ * Falhas de escrita SEGUIDAS que fazem o import desistir. Uma linha ruim é
+ * problema do dado; dez seguidas é o Postgres fora do ar — nesse caso devolver
+ * 200 com "N linhas não puderam ser salvas" mente para o usuário e não alerta
+ * ninguém. Abaixo desse teto o import continua parcial, como decidido.
+ */
+const MAX_CONSECUTIVE_WRITE_FAILURES = 10;
+
+/**
+ * Acima disso, a planilha PRECISA da coluna "ID Externo". Sem ela não há chave
+ * para casar as linhas: se a conexão cair no meio (import é síncrono e pode
+ * passar de um minuto em base remota) e o usuário reenviar o arquivo, tudo é
+ * recriado e o estoque fica em dobro. Com o ID, reenviar é idempotente.
+ */
+const REQUIRE_EXTERNAL_ID_ABOVE = 200;
+
+/** Teto de erros no relatório — 2000 linhas ruins gerariam centenas de KB. */
+const MAX_REPORTED_ERRORS = 200;
 
 export interface VehicleImportReport {
   /** Linhas de dados não-vazias encontradas na planilha. */
@@ -39,6 +60,18 @@ export async function importVehiclesFromXlsx(
   const seenExternalIds = new Set<string>();
   let inserted = 0;
   let updated = 0;
+  let consecutiveFailures = 0;
+
+  // Planilha grande sem nenhuma chave externa: recusar é melhor que aceitar e
+  // deixar o retry duplicar o estoque inteiro (ver REQUIRE_EXTERNAL_ID_ABOVE).
+  if (
+    parsed.rows.length > REQUIRE_EXTERNAL_ID_ABOVE &&
+    parsed.rows.every(({ data }) => !data.externalId)
+  ) {
+    throw new DomainError(
+      `Planilhas com mais de ${REQUIRE_EXTERNAL_ID_ABOVE} veículos precisam da coluna "ID Externo" (o código do veículo no seu sistema de estoque). Sem ela não é possível identificar o que já foi importado, e reenviar o arquivo duplicaria o catálogo.`,
+    );
+  }
 
   for (const { row, data } of parsed.rows) {
     try {
@@ -66,13 +99,31 @@ export async function importVehiclesFromXlsx(
       }
 
       if (externalId) seenExternalIds.add(externalId);
-    } catch {
-      // Falha de escrita de uma linha não derruba o import inteiro.
+      consecutiveFailures = 0;
+    } catch (error) {
+      // Falha de escrita de uma linha não derruba o import inteiro, mas precisa
+      // aparecer no pino/Sentry: sem log, banco fora do ar virava um 200 com
+      // 2000 erros iguais e nenhum rastro do motivo real.
+      consecutiveFailures += 1;
+      logger.warn({ err: error, row, consecutiveFailures }, 'falha ao gravar linha do import');
+
+      if (consecutiveFailures >= MAX_CONSECUTIVE_WRITE_FAILURES) {
+        throw new DomainError(
+          'A importação foi interrompida: não foi possível gravar no banco de dados. Nenhuma linha adicional foi processada — tente novamente em alguns minutos.',
+        );
+      }
       errors.push({ row, field: null, message: 'Não foi possível salvar esta linha.' });
     }
   }
 
-  return { total, inserted, updated, skipped: total - inserted - updated, errors };
+  return {
+    total,
+    inserted,
+    updated,
+    skipped: total - inserted - updated,
+    // O relatório é truncado, mas os contadores acima continuam completos.
+    errors: errors.slice(0, MAX_REPORTED_ERRORS),
+  };
 }
 
 /** Colunas do modelo, na ordem canônica — os títulos batem com os aliases do parser. */

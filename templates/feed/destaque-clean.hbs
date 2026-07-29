@@ -17,7 +17,13 @@
 
       .top { position: absolute; top: 0; left: 0; right: 0; padding: 76px 76px 0; }
       .rule { width: 96px; height: 4px; background: var(--accent); }
-      .eyebrow-line { margin-top: 26px; font-size: 20px; opacity: 0.65; }
+      /* Mesmo teto do headline: o eyebrow renderiza make+model+trim e o `trim`
+         que vem do import de catálogo é longo de verdade ("Highline 1.0 TSI
+         Comfortline"). Sem max-width ele passava por baixo da caixa de preço. */
+      .eyebrow-line {
+        margin-top: 26px; font-size: 20px; opacity: 0.65; max-width: 62%;
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      }
       /* max-width baixo de propósito: a caixa de preço ocupa o canto superior
          direito e o headline não pode invadi-la. */
       .headline {

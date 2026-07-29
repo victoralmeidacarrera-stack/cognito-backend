@@ -9,13 +9,19 @@
  *   npx tsx scripts/preview-templates.ts --photo https://exemplo.com/carro.jpg
  *   npx tsx scripts/preview-templates.ts --slug seminovo
  *   npx tsx scripts/preview-templates.ts --sem-dados      (tudo opcional vazio)
+ *   npx tsx scripts/preview-templates.ts --copy-longa    (todo texto no TETO do schema)
+ *
+ * Os três cenários importam. `--sem-dados` pega rótulo órfão; `--copy-longa`
+ * pega o oposto e é o que faltava: copy dentro do limite do schema (headline de
+ * 120 chars) estourava três templates de feed em silêncio — um deles publicava
+ * a peça com a primeira linha do headline cortada fora.
  *
  * Saída: .local/previews/<slug>.png + .local/previews/index.html
  */
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { closeBrowser } from '../src/config/puppeteer.js';
-import { buildRenderData } from '../src/modules/render/render-data.js';
+import { buildRenderData, type BuildRenderDataInput } from '../src/modules/render/render-data.js';
 import { renderToPng } from '../src/modules/render/render.service.js';
 import { TEMPLATE_CATALOG } from '../src/modules/render/template-catalog.js';
 
@@ -29,6 +35,7 @@ function flag(name: string): string | undefined {
 const onlySlug = flag('slug');
 const photoFlag = flag('photo');
 const semDados = args.includes('--sem-dados');
+const copyLonga = args.includes('--copy-longa');
 
 /* Fundo local (data URI) para o preview rodar offline: gradiente + horizonte,
  * só o suficiente para julgar contraste e composição. Com --photo, usa a real. */
@@ -51,9 +58,17 @@ const PLACEHOLDER_PHOTO =
     </svg>`,
   ).toString('base64');
 
+/* O que um cenário precisa fornecer. Tipar (em vez do `as const` + `as never`
+ * que estava aqui) é o ponto do script: se o contrato de `buildRenderData`
+ * mudar, o preview quebra no typecheck em vez de renderizar peça errada. */
+type PreviewScenario = Pick<
+  BuildRenderDataInput,
+  'copy' | 'vehicle' | 'brandBook' | 'factoryRestrictions' | 'briefingInput'
+>;
+
 /* Dados de exemplo — o cenário "cheio". Com --sem-dados testamos o oposto:
  * todo campo opcional vazio (é assim que chega um cliente recém-cadastrado). */
-const FULL = {
+const FULL: PreviewScenario = {
   copy: {
     headline: 'Nivus Highline 2025 com IPVA pago',
     cta: 'Agende seu test-drive',
@@ -97,9 +112,29 @@ const FULL = {
     validade: '27/07',
     selo: 'Feirão de Julho',
   },
-} as const;
+};
 
-const EMPTY = {
+/* Todo texto no TETO do schema (headline 120, sub 160, cta 40) e um `trim`
+ * longo como os que vêm do import de catálogo. Não é caso teórico: é a copy que
+ * o Claude devolve quando o briefing tem muita condição, e ela precisa caber. */
+const LONGA: PreviewScenario = {
+  ...FULL,
+  copy: {
+    headline:
+      'Volkswagen Nivus Highline 2025 com IPVA pago, tanque cheio, garantia de fábrica e transferência inclusa',
+    cta: 'Agende agora o seu test-drive sem custo',
+    sub_headline:
+      'Condições especiais válidas somente neste fim de semana para os primeiros dez clientes que fecharem negócio na loja.',
+    descricao: 'Feirão de julho na Concessionária Demo.',
+    emoji_sugerido: '🚗',
+  },
+  vehicle: FULL.vehicle && {
+    ...FULL.vehicle,
+    trim: 'Highline 1.0 TSI Comfortline AT',
+  },
+};
+
+const EMPTY: PreviewScenario = {
   copy: { headline: 'Condições especiais nesta semana', cta: 'Fale no WhatsApp' },
   vehicle: null,
   brandBook: {
@@ -113,10 +148,10 @@ const EMPTY = {
   },
   factoryRestrictions: {},
   briefingInput: {},
-} as const;
+};
 
 async function main(): Promise<void> {
-  const scenario = semDados ? EMPTY : FULL;
+  const scenario = semDados ? EMPTY : copyLonga ? LONGA : FULL;
   const templates = onlySlug
     ? TEMPLATE_CATALOG.filter((t) => t.slug.startsWith(onlySlug))
     : TEMPLATE_CATALOG;
@@ -127,7 +162,7 @@ async function main(): Promise<void> {
 
   await mkdir(OUT_DIR, { recursive: true });
   console.log(
-    `Renderizando ${templates.length} template(s) — cenário ${semDados ? 'SEM DADOS' : 'completo'}\n`,
+    `Renderizando ${templates.length} template(s) — cenário ${semDados ? 'SEM DADOS' : copyLonga ? 'COPY LONGA' : 'completo'}\n`,
   );
 
   const rendered: Array<{ slug: string; name: string; width: number; height: number }> = [];
@@ -137,9 +172,9 @@ async function main(): Promise<void> {
     const started = Date.now();
     try {
       const data = buildRenderData({
-        copy: scenario.copy as never,
-        vehicle: scenario.vehicle as never,
-        brandBook: scenario.brandBook as never,
+        copy: scenario.copy,
+        vehicle: scenario.vehicle,
+        brandBook: scenario.brandBook,
         factoryRestrictions: scenario.factoryRestrictions,
         briefingInput: scenario.briefingInput,
         backgroundUrl: photoFlag ?? PLACEHOLDER_PHOTO,

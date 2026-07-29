@@ -25,16 +25,25 @@
       .store-name { position: absolute; top: 66px; right: 56px; z-index: 3; font-size: 20px; opacity: 0.9; }
       .store-logo { position: absolute; top: 48px; right: 56px; z-index: 3; height: 56px; object-fit: contain; }
 
+      /* `min-height` (não `height`) + sem `overflow: hidden`: com headline longo
+         o painel cresce PARA CIMA sobre a foto, que já tem gradiente escuro na
+         base. Com altura fixa e overflow escondido, o estouro saía pelo topo
+         por causa do `justify-content: flex-end` e a peça era publicada com a
+         primeira linha do headline decapitada — ilegível, mas sem erro nenhum. */
       .panel {
-        position: absolute; left: 0; right: 0; bottom: 0; height: 640px;
+        position: absolute; left: 0; right: 0; bottom: 0; min-height: 640px;
         padding: 56px 72px 52px;
         display: flex; flex-direction: column; justify-content: flex-end;
-        overflow: hidden;
       }
       /* Escala própria: `layout.headlineSize` é calibrado para a peça-pôster
          (texto sobre foto cheia); aqui o headline divide espaço com ficha
-         técnica, preço e CTA. */
-      .headline { font-size: 58px; max-width: 94%; }
+         técnica, preço e CTA. O clamp é o último recurso para copy no teto do
+         schema (120 chars): corta o FIM com reticências, nunca o começo. */
+      .headline {
+        font-size: 58px; max-width: 94%;
+        display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3;
+        overflow: hidden;
+      }
 
       .specs { display: flex; gap: 16px; margin-top: 28px; }
       /* min-width:0 é obrigatório: sem ele o min-content de "2024/2025"

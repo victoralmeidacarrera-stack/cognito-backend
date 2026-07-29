@@ -51,6 +51,7 @@
     {{#if offer.parcela}}
       <div class="offer-label">Parcelas a partir de</div>
       <div class="offer-value">{{offer.parcela}}</div>
+      {{! Entrada e taxa são independentes — ver o comentário no feed. }}
       {{#if offer.entrada}}
         <div class="side">
           <div>
@@ -63,6 +64,13 @@
               <div class="side-value">{{offer.taxa}}</div>
             </div>
           {{/if}}
+        </div>
+      {{else if offer.taxa}}
+        <div class="side">
+          <div>
+            <div class="side-label">Taxa</div>
+            <div class="side-value">{{offer.taxa}}</div>
+          </div>
         </div>
       {{/if}}
       {{#if price}}<div class="price-line">Valor à vista: <strong>{{price}}</strong></div>{{/if}}
