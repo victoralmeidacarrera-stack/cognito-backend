@@ -18,6 +18,38 @@ Formato de cada entrada:
 
 ---
 
+## 2026-07-28 21:20 — Shipping: templates + import saem da working tree para branches
+
+- Status: ✅ aprovado
+- **Sem ciclo de subagente** (nada de código de feature foi escrito): a sessão
+  começou com "não consegui visualizar a feature de importação no frontend" e a
+  causa era essa — o código estava **inteiro e correto, mas nunca commitado**.
+  Uma semana de trabalho (16 templates + import) vivia só na working tree das
+  duas máquinas de repo, então não existia no Vercel nem no Railway.
+- Diagnóstico: portas 3333/5173/5432/6379 todas livres (nada rodando) e
+  `git status` com 13 arquivos modificados + 20 untracked no backend, 11
+  modificados no frontend.
+- Ambiente local levantado para conferir a feature de pé: `dev:db`
+  (embedded-postgres), API e Vite. `GET /vehicles/import/template` → 200 com
+  7 KB de xlsx real e content-type correto; `GET /vehicles` → 200.
+- Validação antes de commitar: `typecheck` limpo, **77 testes / 9 arquivos**
+  passando, `npm run build` do front OK (tsc + vite).
+- Commits (branch `feat/templates-e-import`, pushada):
+  1. `feat(templates)` — 16 templates, catálogo como fonte única, `render-data.ts`
+  2. `feat(vehicles)` — import .xlsx
+  3. `chore(logs,lint)` — `LOG_PRETTY` opt-in, eslint ignora `.local/`
+  Front em `feat/import-catalogo` (import + layout responsivo), também pushada.
+- Riscos de produção conferidos: `exceljs` está em `dependencies` (sobrevive ao
+  `--omit=dev` do Railway), **nenhuma migration nova** (usa a `Vehicle`
+  existente), e os `.hbs` resolvem por `process.cwd()/templates`, que existe no
+  deploy — os 16 carregam pelo mesmo caminho que os 2 antigos.
+- Pendente: PRs abertos **à mão** (gh ausente) e não mergeados; conferir que
+  `LOG_PRETTY` não está `true` no painel do Railway.
+- Rodadas de correção: 0
+- typecheck/lint: passou
+
+---
+
 ## 2026-07-27 22:45 — Import de catálogo: dependência, validação em runtime e ponta do front
 
 - Status: ✅ aprovado
