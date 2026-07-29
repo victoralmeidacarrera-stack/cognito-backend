@@ -1,29 +1,16 @@
 import { type FastifyInstance } from 'fastify';
 import { type ZodTypeProvider } from 'fastify-type-provider-zod';
-import { z } from 'zod';
 import { type Prisma } from '@prisma/client';
 import { getTenantDb } from '../../shared/context.js';
 import { NotFoundError } from '../../shared/errors.js';
 import { idParamSchema, paginationSchema } from '../../shared/schemas.js';
-
-const createVehicleSchema = z.object({
-  make: z.string().min(1).max(100),
-  model: z.string().min(1).max(100),
-  trim: z.string().max(100).optional(),
-  year: z.number().int().min(1950).max(2100),
-  modelYear: z.number().int().min(1950).max(2100).optional(),
-  priceCents: z.number().int().nonnegative().optional(),
-  mileageKm: z.number().int().nonnegative().optional(),
-  color: z.string().max(60).optional(),
-  fuel: z.string().max(40).optional(),
-  transmission: z.string().max(40).optional(),
-  plateEnding: z.string().max(4).optional(),
-  condition: z.enum(['NEW', 'USED']).optional(),
-  highlights: z.array(z.string().max(120)).optional(),
-  externalId: z.string().max(120).optional(),
-});
-
-const updateVehicleSchema = createVehicleSchema.partial();
+import { buildImportTemplateXlsx, importVehiclesFromXlsx } from './import.service.js';
+import {
+  createVehicleSchema,
+  importReportSchema,
+  importVehiclesSchema,
+  updateVehicleSchema,
+} from './vehicles.schemas.js';
 
 const TAGS = ['Veículos'];
 
@@ -57,6 +44,41 @@ export function registerVehicleRoutes(app: FastifyInstance): void {
         db.vehicle.count(),
       ]);
       return { items, total, page, perPage };
+    },
+  );
+
+  // Import em massa. Rota estática tem precedência sobre `/vehicles/:id` no
+  // find-my-way (independe da ordem de registro), mas fica declarada antes
+  // para deixar isso óbvio na leitura.
+  r.post(
+    '/vehicles/import',
+    {
+      bodyLimit: 15 * 1024 * 1024, // planilha do DMS em base64 (infla ~33%)
+      schema: {
+        body: importVehiclesSchema,
+        response: { 200: importReportSchema },
+        tags: TAGS,
+        summary: 'Importa catálogo de uma planilha .xlsx',
+      },
+    },
+    async (request) => {
+      const file = Buffer.from(request.body.fileBase64, 'base64');
+      return importVehiclesFromXlsx(getTenantDb(request), file, {
+        dryRun: request.body.dryRun ?? false,
+      });
+    },
+  );
+
+  // Modelo da planilha. Sem schema de response: o corpo é binário.
+  r.get(
+    '/vehicles/import/template',
+    { schema: { tags: TAGS, summary: 'Baixa a planilha modelo de importação' } },
+    async (_request, reply) => {
+      const file = await buildImportTemplateXlsx();
+      return reply
+        .type('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        .header('Content-Disposition', 'attachment; filename="modelo-catalogo-cognito.xlsx"')
+        .send(file);
     },
   );
 
