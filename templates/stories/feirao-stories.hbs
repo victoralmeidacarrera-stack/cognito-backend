@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      {{> base-style}}
+
+      .bleed { filter: saturate(1.05); }
+      .scrim {
+        position: absolute; inset: 0;
+        background: linear-gradient(to top, var(--primary) 8%, rgba(0,0,0,0.55) 48%, rgba(0,0,0,0.3) 100%);
+      }
+
+      .strip {
+        position: absolute; top: 140px; left: 0; right: 0; height: 104px;
+        background: var(--accent); color: var(--on-accent);
+        display: flex; align-items: center; justify-content: center; gap: 26px;
+        font-size: 30px; font-weight: 800;
+        text-transform: uppercase; letter-spacing: 0.22em;
+        overflow: hidden; white-space: nowrap;
+      }
+      .strip span { opacity: 0.35; }
+      .strip .lead { opacity: 1; letter-spacing: 0.26em; }
+
+      .store-name { position: absolute; top: 284px; left: 64px; font-size: 22px; opacity: 0.9; }
+      .store-logo { position: absolute; top: 272px; left: 64px; height: 58px; object-fit: contain; }
+
+      .datebox {
+        position: absolute; top: 276px; right: 64px;
+        border: 3px solid var(--accent); border-radius: 20px;
+        padding: 18px 26px; text-align: center; background: rgba(0,0,0,0.35);
+      }
+      .datebox .k { font-size: 16px; letter-spacing: 0.2em; text-transform: uppercase; opacity: 0.75; }
+      .datebox .v { font-family: var(--head); font-size: 38px; font-weight: 800; margin-top: 4px; line-height: 1; }
+
+      .content { position: absolute; left: 0; right: 0; bottom: 190px; padding: 0 72px; }
+      .headline {
+        font-size: {{layout.headlineSize}}px;
+        text-transform: uppercase; line-height: 0.96; letter-spacing: -0.015em; max-width: 96%;
+      }
+      .sub { font-size: {{layout.bodySize}}px; margin-top: 20px; opacity: 0.9; max-width: 92%; }
+      .price { font-family: var(--head); font-size: {{layout.priceSize}}px; font-weight: 800; color: var(--accent); line-height: 1; margin-top: 32px; }
+      .cta {
+        margin-top: 36px; text-align: center;
+        background: #fff; color: #111;
+        padding: 28px 42px; border-radius: 999px;
+        font-size: 36px; font-weight: 800;
+      }
+      .legal { margin-top: 24px; }
+    </style>
+  </head>
+  <body>
+    {{#if photoUrl}}<img class="bleed" src="{{photoUrl}}" alt="" />{{/if}}
+    <div class="scrim"></div>
+
+    <div class="strip">
+      <span>{{#if offer.selo}}{{offer.selo}}{{else}}Feirão{{/if}}</span>
+      <span class="lead">{{#if offer.selo}}{{offer.selo}}{{else}}Feirão{{/if}}</span>
+      <span>{{#if offer.selo}}{{offer.selo}}{{else}}Feirão{{/if}}</span>
+    </div>
+
+    {{> store-tag}}
+
+    {{#if offer.periodo}}
+      <div class="datebox"><div class="k">Quando</div><div class="v">{{offer.periodo}}</div></div>
+    {{else if offer.validade}}
+      <div class="datebox"><div class="k">Até</div><div class="v">{{offer.validade}}</div></div>
+    {{/if}}
+
+    <div class="content">
+      <h1 class="head headline">{{headline}}</h1>
+      {{#if sub_headline}}<div class="sub">{{sub_headline}}</div>{{/if}}
+      {{#if price}}<div class="price">{{price}}</div>{{/if}}
+      <div class="cta">{{cta}}</div>
+      {{> legal}}
+    </div>
+  </body>
+</html>

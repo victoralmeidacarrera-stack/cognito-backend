@@ -1,4 +1,5 @@
 import { CreativeFormat, Plan, PrismaClient, UserRole } from '@prisma/client';
+import { syncOrganizationTemplates } from '../src/modules/render/template-catalog.js';
 
 const prisma = new PrismaClient();
 
@@ -9,8 +10,6 @@ const DEMO = {
   brandBookId: 'bb_demo',
   vehicleId: 'veh_demo',
   campaignId: 'cmp_demo',
-  templateFeedId: 'tpl_feed_oferta',
-  templateStoriesId: 'tpl_stories_oferta',
 } as const;
 
 async function main(): Promise<void> {
@@ -103,70 +102,16 @@ async function main(): Promise<void> {
     },
   });
 
-  // 6. Templates base (feed + stories) — apontam para /templates/<format>/<slug>.hbs
-  await prisma.template.upsert({
-    where: {
-      organizationId_slug_version: {
-        organizationId: org.id,
-        slug: 'oferta-destaque',
-        version: 1,
-      },
-    },
-    update: {},
-    create: {
-      id: DEMO.templateFeedId,
-      organizationId: org.id,
-      name: 'Oferta em Destaque (Feed)',
-      slug: 'oferta-destaque',
-      format: CreativeFormat.FEED,
-      version: 1,
-      width: 1080,
-      height: 1350,
-      variablesSchema: {
-        type: 'object',
-        required: ['headline', 'cta', 'price'],
-        properties: {
-          headline: { type: 'string' },
-          cta: { type: 'string' },
-          price: { type: 'string' },
-        },
-      },
-    },
-  });
-
-  await prisma.template.upsert({
-    where: {
-      organizationId_slug_version: {
-        organizationId: org.id,
-        slug: 'oferta-destaque-stories',
-        version: 1,
-      },
-    },
-    update: {},
-    create: {
-      id: DEMO.templateStoriesId,
-      organizationId: org.id,
-      name: 'Oferta em Destaque (Stories)',
-      slug: 'oferta-destaque-stories',
-      format: CreativeFormat.STORIES,
-      version: 1,
-      width: 1080,
-      height: 1920,
-      variablesSchema: {
-        type: 'object',
-        required: ['headline', 'cta'],
-        properties: {
-          headline: { type: 'string' },
-          cta: { type: 'string' },
-        },
-      },
-    },
-  });
+  // 6. Templates — provisionados a partir do catálogo
+  // (src/modules/render/template-catalog.ts), que é a fonte única da verdade.
+  // Idempotente: rodar o seed de novo só atualiza nome/dimensões/schema.
+  const templates = await syncOrganizationTemplates(prisma, org.id);
 
   console.log('✅ Seed concluído:', {
     org: org.slug,
     admin: admin.email,
     brandBook: brandBook.name,
+    templates: `${templates.total} (${templates.created} novos, ${templates.updated} atualizados)`,
   });
 }
 

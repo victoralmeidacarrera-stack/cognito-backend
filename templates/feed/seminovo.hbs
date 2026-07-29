@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      {{> base-style}}
+
+      /* Corte diagonal: foto no topo, ficha técnica no bloco de baixo. */
+      .photo-wrap {
+        position: absolute; top: 0; left: 0; right: 0; height: 780px;
+        clip-path: polygon(0 0, 100% 0, 100% 88%, 0 100%);
+        background: var(--secondary);
+      }
+      .photo-wrap::after {
+        content: ''; position: absolute; inset: 0;
+        background: linear-gradient(to top, rgba(0,0,0,0.45), transparent 45%);
+      }
+      .badge-cond {
+        position: absolute; top: 56px; left: 56px; z-index: 3;
+        background: var(--accent); color: var(--on-accent);
+        padding: 14px 26px; border-radius: 999px;
+        font-size: 24px; font-weight: 700;
+        text-transform: uppercase; letter-spacing: 0.12em;
+      }
+      .store-name { position: absolute; top: 66px; right: 56px; z-index: 3; font-size: 20px; opacity: 0.9; }
+      .store-logo { position: absolute; top: 48px; right: 56px; z-index: 3; height: 56px; object-fit: contain; }
+
+      .panel {
+        position: absolute; left: 0; right: 0; bottom: 0; height: 640px;
+        padding: 56px 72px 52px;
+        display: flex; flex-direction: column; justify-content: flex-end;
+        overflow: hidden;
+      }
+      /* Escala própria: `layout.headlineSize` é calibrado para a peça-pôster
+         (texto sobre foto cheia); aqui o headline divide espaço com ficha
+         técnica, preço e CTA. */
+      .headline { font-size: 58px; max-width: 94%; }
+
+      .specs { display: flex; gap: 16px; margin-top: 28px; }
+      /* min-width:0 é obrigatório: sem ele o min-content de "2024/2025"
+         impede o flex de encolher e a terceira caixa vaza da peça. */
+      .spec {
+        flex: 1; min-width: 0; padding: 18px 22px;
+        border: 2px solid rgba(255,255,255,0.16); border-radius: 14px;
+        background: rgba(255,255,255,0.05);
+      }
+      .spec-label { font-size: 16px; text-transform: uppercase; letter-spacing: 0.16em; opacity: 0.6; font-weight: 600; }
+      .spec-value { font-family: var(--head); font-size: 34px; font-weight: 800; margin-top: 6px; line-height: 1; }
+
+      .price-row {
+        display: flex; align-items: flex-end; justify-content: space-between;
+        gap: 20px; margin-top: 30px; flex-wrap: wrap;
+      }
+      .price-label { font-size: 19px; letter-spacing: 0.16em; opacity: 0.6; }
+      .price { font-family: var(--head); font-size: 52px; font-weight: 800; color: var(--accent); line-height: 1; margin-top: 4px; }
+      .cta {
+        background: var(--accent); color: var(--on-accent);
+        padding: 20px 34px; border-radius: 12px;
+        font-size: 30px; font-weight: 700; white-space: nowrap;
+      }
+      .legal { margin-top: 22px; }
+    </style>
+  </head>
+  <body>
+    <div class="photo-wrap">
+      {{#if photoUrl}}<img class="bleed" src="{{photoUrl}}" alt="" />{{/if}}
+    </div>
+
+    {{#if vehicle.condicaoLabel}}<span class="badge-cond">{{vehicle.condicaoLabel}}</span>{{/if}}
+    {{> store-tag}}
+
+    <div class="panel">
+      <h1 class="head headline">{{headline}}</h1>
+
+      {{#if vehicle}}
+        <div class="specs">
+          {{#if vehicle.anoLabel}}
+            <div class="spec"><div class="spec-label">Ano</div><div class="spec-value">{{vehicle.anoLabel}}</div></div>
+          {{/if}}
+          {{#if vehicle.kmLabel}}
+            <div class="spec"><div class="spec-label">Km</div><div class="spec-value">{{vehicle.kmLabel}}</div></div>
+          {{/if}}
+        </div>
+      {{/if}}
+
+      <div class="price-row">
+        <div>
+          {{#if price}}
+            <div class="price-label eyebrow">Por</div>
+            <div class="price">{{price}}</div>
+          {{/if}}
+        </div>
+        <span class="cta">{{cta}}</span>
+      </div>
+
+      {{> legal}}
+    </div>
+  </body>
+</html>

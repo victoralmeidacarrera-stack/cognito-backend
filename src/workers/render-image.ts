@@ -8,20 +8,11 @@ import {
   applyRenderResult,
   markCreativeRenderFailed,
 } from '../modules/creatives/creatives.service.js';
-import { layoutToRenderVars, parseLayout } from '../modules/brand-books/layout.js';
 import { renderImagePayloadSchema } from '../modules/jobs/job-payloads.js';
 import { markJobCompleted, markJobFailed } from '../modules/jobs/jobs.service.js';
+import { buildRenderData } from '../modules/render/render-data.js';
 import { renderAndUpload } from '../modules/render/render.service.js';
 import { type CreativeCopy } from '../shared/schemas.js';
-import { formatPriceBRL } from '../shared/utils.js';
-
-function disclaimerFrom(factoryRestrictions: unknown): string {
-  if (factoryRestrictions && typeof factoryRestrictions === 'object') {
-    const value = (factoryRestrictions as Record<string, unknown>).disclaimerObrigatorio;
-    if (typeof value === 'string') return value;
-  }
-  return '';
-}
 
 export async function processRenderImage(job: Job): Promise<void> {
   const { jobId, organizationId, creativeId } = renderImagePayloadSchema.parse(job.data);
@@ -45,35 +36,22 @@ export async function processRenderImage(job: Job): Promise<void> {
       db.brandBook.findFirst({ where: { isActive: true }, orderBy: { updatedAt: 'desc' } }),
       prisma.organization.findUniqueOrThrow({
         where: { id: organizationId },
-        select: { factoryRestrictions: true },
+        select: { factoryRestrictions: true, name: true },
       }),
     ]);
 
-    const copy = creative.copy as unknown as CreativeCopy;
-    const priceCents = creative.briefing?.vehicle?.priceCents ?? null;
-    // Disposição do texto (posição/fonte/tamanho) definida no brand book.
-    const layout = layoutToRenderVars(parseLayout(brandBook?.layout));
-    const data: Record<string, unknown> = {
-      headline: copy.headline,
-      cta: copy.cta,
-      // Fundo da composição (foto real ou cena Flux). Vazio = cor sólida.
-      photoUrl: creative.backgroundUrl ?? '',
-      sub_headline: copy.sub_headline ?? '',
-      descricao: copy.descricao ?? '',
-      emoji: copy.emoji_sugerido ?? '',
-      // Preço do veículo do briefing (só renderiza se houver veículo com preço).
-      price: priceCents != null ? formatPriceBRL(priceCents) : '',
-      disclaimer: disclaimerFrom(org.factoryRestrictions),
-      layout,
-      brand: brandBook
-        ? {
-            primaryColor: brandBook.primaryColor ?? '#0A2540',
-            secondaryColor: brandBook.secondaryColor ?? '#1565C0',
-            accentColor: brandBook.accentColor ?? '#FFB300',
-            typography: brandBook.typography,
-          }
-        : {},
-    };
+    // Contrato de dados centralizado em render-data.ts (mesmo builder usado
+    // pelo script de preview dos templates).
+    const data = buildRenderData({
+      copy: creative.copy as unknown as CreativeCopy,
+      vehicle: creative.briefing?.vehicle ?? null,
+      brandBook,
+      factoryRestrictions: org.factoryRestrictions,
+      briefingInput: creative.briefing?.input ?? null,
+      backgroundUrl: creative.backgroundUrl,
+      storeName: org.name,
+      canvas: { width: creative.template.width, height: creative.template.height },
+    });
 
     const result = await renderAndUpload({
       organizationId,

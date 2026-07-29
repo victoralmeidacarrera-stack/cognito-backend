@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      {{> base-style}}
+
+      /* Stories: foto ocupa o terço superior seguro, ficha no meio, CTA no fim. */
+      .photo-wrap {
+        position: absolute; top: 0; left: 0; right: 0; height: 1080px;
+        clip-path: polygon(0 0, 100% 0, 100% 92%, 0 100%);
+        background: var(--secondary);
+      }
+      .photo-wrap::after {
+        content: ''; position: absolute; inset: 0;
+        background: linear-gradient(to top, rgba(0,0,0,0.5), transparent 40%);
+      }
+      .badge-cond {
+        position: absolute; top: 150px; left: 64px; z-index: 3;
+        background: var(--accent); color: var(--on-accent);
+        padding: 16px 30px; border-radius: 999px;
+        font-size: 27px; font-weight: 700;
+        text-transform: uppercase; letter-spacing: 0.12em;
+      }
+      .store-name { position: absolute; top: 160px; right: 64px; z-index: 3; font-size: 22px; opacity: 0.9; }
+      .store-logo { position: absolute; top: 142px; right: 64px; z-index: 3; height: 62px; object-fit: contain; }
+
+      .panel {
+        position: absolute; left: 0; right: 0; top: 1080px; bottom: 0;
+        padding: 70px 72px 180px;
+        display: flex; flex-direction: column; justify-content: flex-start;
+      }
+      /* Escala própria (ver comentário no seminovo de feed). */
+      .headline { font-size: 66px; max-width: 96%; }
+
+      .specs { display: flex; gap: 16px; margin-top: 36px; }
+      /* min-width:0 evita que o min-content das caixas estoure a peça. */
+      .spec {
+        flex: 1; min-width: 0; padding: 22px 24px;
+        border: 2px solid rgba(255,255,255,0.16); border-radius: 16px;
+        background: rgba(255,255,255,0.05);
+      }
+      .spec-label { font-size: 18px; text-transform: uppercase; letter-spacing: 0.16em; opacity: 0.6; font-weight: 600; }
+      .spec-value { font-family: var(--head); font-size: 44px; font-weight: 800; margin-top: 6px; line-height: 1; }
+
+      .price-label { font-size: 22px; letter-spacing: 0.16em; opacity: 0.6; margin-top: 40px; }
+      .price { font-family: var(--head); font-size: 64px; font-weight: 800; color: var(--accent); line-height: 1; margin-top: 6px; }
+      .cta {
+        margin-top: 44px; text-align: center;
+        background: var(--accent); color: var(--on-accent);
+        padding: 28px 40px; border-radius: 18px;
+        font-size: 34px; font-weight: 700;
+      }
+      .legal { margin-top: 26px; }
+    </style>
+  </head>
+  <body>
+    <div class="photo-wrap">
+      {{#if photoUrl}}<img class="bleed" src="{{photoUrl}}" alt="" />{{/if}}
+    </div>
+
+    {{#if vehicle.condicaoLabel}}<span class="badge-cond">{{vehicle.condicaoLabel}}</span>{{/if}}
+    {{> store-tag}}
+
+    <div class="panel">
+      <h1 class="head headline">{{headline}}</h1>
+
+      {{#if vehicle}}
+        <div class="specs">
+          {{#if vehicle.anoLabel}}
+            <div class="spec"><div class="spec-label">Ano</div><div class="spec-value">{{vehicle.anoLabel}}</div></div>
+          {{/if}}
+          {{#if vehicle.kmLabel}}
+            <div class="spec"><div class="spec-label">Km</div><div class="spec-value">{{vehicle.kmLabel}}</div></div>
+          {{/if}}
+        </div>
+      {{/if}}
+
+      {{#if price}}
+        <div class="price-label eyebrow">Por</div>
+        <div class="price">{{price}}</div>
+      {{/if}}
+
+      <div class="cta">{{cta}}</div>
+      {{> legal}}
+    </div>
+  </body>
+</html>

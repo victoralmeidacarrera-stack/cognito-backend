@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      {{> base-style}}
+
+      body { padding: 120px 26px 110px; background: var(--accent); }
+      .frame {
+        position: relative; width: 100%; height: 100%;
+        background: var(--primary); color: var(--on-primary);
+        border-radius: 26px; overflow: hidden;
+        display: flex; flex-direction: column;
+      }
+      .photo-box { position: relative; height: 900px; flex-shrink: 0; background: var(--secondary); }
+      .photo-box::after {
+        content: ''; position: absolute; inset: 0;
+        background: linear-gradient(to top, rgba(0,0,0,0.42), transparent 50%);
+      }
+
+      .tag {
+        position: absolute; top: 60px; left: -8px; z-index: 4;
+        transform: rotate(-6deg);
+        background: var(--accent); color: var(--on-accent);
+        padding: 18px 38px;
+        font-family: var(--head); font-size: 46px; font-weight: 800;
+        text-transform: uppercase; letter-spacing: 0.06em;
+        box-shadow: 0 14px 34px rgba(0,0,0,0.35);
+      }
+      .store-name { position: absolute; top: 70px; right: 46px; z-index: 4; font-size: 22px; color: #fff; }
+      .store-logo { position: absolute; top: 56px; right: 46px; z-index: 4; height: 58px; object-fit: contain; }
+
+      .body-area { flex: 1; padding: 52px 56px 48px; display: flex; flex-direction: column; }
+      .model { font-family: var(--head); font-size: 88px; font-weight: 800; line-height: 0.98; letter-spacing: -0.025em; }
+      .year { font-size: 26px; letter-spacing: 0.2em; text-transform: uppercase; opacity: 0.6; margin-top: 12px; }
+      .headline { font-size: 40px; font-weight: 600; line-height: 1.15; margin-top: 24px; opacity: 0.95; }
+
+      .spacer { flex: 1; }
+      .price { font-family: var(--head); font-size: 60px; font-weight: 800; color: var(--accent); line-height: 1; }
+      .cta {
+        margin-top: 26px; text-align: center;
+        background: var(--accent); color: var(--on-accent);
+        padding: 28px 38px; border-radius: 16px;
+        font-size: 34px; font-weight: 700;
+      }
+      .legal { margin-top: 20px; }
+    </style>
+  </head>
+  <body>
+    <div class="frame">
+      <div class="photo-box">
+        {{#if photoUrl}}<img class="bleed" src="{{photoUrl}}" alt="" />{{/if}}
+        <span class="tag">Chegou</span>
+        {{> store-tag}}
+      </div>
+
+      <div class="body-area">
+        {{#if vehicle.nome}}
+          <div class="model">{{vehicle.nome}}</div>
+          {{#if vehicle.anoLabel}}<div class="year">{{vehicle.anoLabel}}{{#if vehicle.color}} · {{vehicle.color}}{{/if}}</div>{{/if}}
+          <div class="headline">{{headline}}</div>
+        {{else}}
+          <div class="model">{{headline}}</div>
+          {{#if sub_headline}}<div class="headline">{{sub_headline}}</div>{{/if}}
+        {{/if}}
+
+        <div class="spacer"></div>
+        {{#if price}}<div class="price">{{price}}</div>{{/if}}
+        <div class="cta">{{cta}}</div>
+        {{> legal}}
+      </div>
+    </div>
+  </body>
+</html>

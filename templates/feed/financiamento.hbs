@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      {{> base-style}}
+
+      /* Fundo sólido da marca; a foto vira uma "janela" no topo.
+         O protagonista é o número da parcela — quando o briefing trouxer um. */
+      body { padding: 48px; }
+      .window {
+        position: relative; width: 100%; height: 560px;
+        border-radius: 28px; overflow: hidden; background: var(--secondary);
+      }
+      .window::after {
+        content: ''; position: absolute; inset: 0;
+        background: linear-gradient(to top, rgba(0,0,0,0.35), transparent 55%);
+      }
+      .store-name { position: absolute; top: 28px; left: 32px; z-index: 3; font-size: 20px; color: #fff; }
+      .store-logo { position: absolute; top: 24px; left: 32px; z-index: 3; height: 52px; object-fit: contain; }
+
+      .headline { font-size: 54px; margin-top: 40px; max-width: 90%; }
+
+      .offer { margin-top: 34px; display: flex; align-items: flex-end; gap: 28px; }
+      .offer-main { flex: 1; }
+      .offer-label { font-size: 21px; opacity: 0.62; }
+      .offer-value {
+        font-family: var(--head); font-weight: 800; line-height: 0.92;
+        font-size: 132px; color: var(--accent); margin-top: 8px;
+        letter-spacing: -0.03em;
+      }
+      .offer-side { padding-bottom: 14px; }
+      .offer-side div + div { margin-top: 14px; }
+      .side-label { font-size: 17px; opacity: 0.55; letter-spacing: 0.14em; text-transform: uppercase; }
+      .side-value { font-size: 32px; font-weight: 700; }
+
+      .price-line { margin-top: 26px; font-size: 26px; opacity: 0.78; }
+      .price-line strong { font-weight: 700; opacity: 1; }
+
+      .cta {
+        position: absolute; left: 48px; right: 48px; bottom: 128px;
+        background: var(--accent); color: var(--on-accent);
+        padding: 28px; border-radius: 16px; text-align: center;
+        font-size: {{layout.ctaSize}}px; font-weight: 700;
+      }
+      .legal { position: absolute; left: 48px; right: 48px; bottom: 52px; }
+    </style>
+  </head>
+  <body>
+    <div class="window">
+      {{#if photoUrl}}<img class="bleed" src="{{photoUrl}}" alt="" />{{/if}}
+      {{> store-tag}}
+    </div>
+
+    <h1 class="head headline">{{headline}}</h1>
+
+    {{#if offer.parcela}}
+      <div class="offer">
+        <div class="offer-main">
+          <div class="offer-label">Parcelas a partir de</div>
+          <div class="offer-value">{{offer.parcela}}</div>
+        </div>
+        {{#if offer.entrada}}
+          <div class="offer-side">
+            <div>
+              <div class="side-label">Entrada</div>
+              <div class="side-value">{{offer.entrada}}</div>
+            </div>
+            {{#if offer.taxa}}
+              <div>
+                <div class="side-label">Taxa</div>
+                <div class="side-value">{{offer.taxa}}</div>
+              </div>
+            {{/if}}
+          </div>
+        {{/if}}
+      </div>
+      {{#if price}}<div class="price-line">Valor à vista: <strong>{{price}}</strong></div>{{/if}}
+    {{else if price}}
+      {{! Sem parcela informada no briefing, o preço à vista assume o destaque —
+          nunca simulamos financiamento a partir do preço. }}
+      <div class="offer">
+        <div class="offer-main">
+          <div class="offer-label">Por</div>
+          <div class="offer-value">{{price}}</div>
+        </div>
+      </div>
+    {{/if}}
+
+    {{#if sub_headline}}<div class="price-line">{{sub_headline}}</div>{{/if}}
+
+    <div class="cta">{{cta}}</div>
+    {{> legal}}
+  </body>
+</html>
