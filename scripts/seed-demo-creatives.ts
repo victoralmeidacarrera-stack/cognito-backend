@@ -83,8 +83,13 @@ async function main(): Promise<void> {
 
   for (let i = 0; i < variations.length; i++) {
     const v = variations[i]!;
-    const templateId =
-      v.format === CreativeFormat.STORIES ? 'tpl_stories_oferta' : 'tpl_feed_oferta';
+    // Resolve pelo slug: os templates são provisionados pelo catálogo
+    // (ids gerados), não por id fixo de seed.
+    const template = await prisma.template.findFirstOrThrow({
+      where: { organizationId: ORG, slug: v.slug },
+      select: { id: true },
+    });
+    const templateId = template.id;
     const png = await renderToPng({
       format: v.format,
       slug: v.slug,

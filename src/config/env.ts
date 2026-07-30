@@ -13,6 +13,9 @@ const envSchema = z.object({
   PORT: z.coerce.number().int().positive().default(3333),
   HOST: z.string().default('0.0.0.0'),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
+  // Ativa o transport pino-pretty (devDependency; ausente no runner de produção).
+  // Opt-in explícito: só liga quando LOG_PRETTY=true, nunca por inferência de NODE_ENV.
+  LOG_PRETTY: z.enum(['true', 'false']).optional(),
 
   // Origens do CORS (separadas por vírgula). Vazio = reflete a origem (dev).
   CORS_ORIGINS: z.string().optional(),

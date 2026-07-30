@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      {{> base-style}}
+
+      body { background: var(--secondary); color: var(--on-secondary); }
+
+      .photo-wrap { position: absolute; left: 0; right: 0; bottom: 0; height: 980px; }
+      .photo-wrap::after {
+        content: ''; position: absolute; inset: 0;
+        background: linear-gradient(to bottom, var(--secondary) 0%, rgba(0,0,0,0) 38%);
+      }
+
+      .top { position: absolute; top: 190px; left: 0; right: 0; padding: 0 76px; }
+      .rule { width: 96px; height: 4px; background: var(--accent); }
+      .eyebrow-line { margin-top: 28px; font-size: 22px; opacity: 0.65; }
+      .headline { font-size: 92px; font-weight: 800; line-height: 1.0; letter-spacing: -0.03em; margin-top: 22px; max-width: 92%; }
+      .sub { font-size: 30px; line-height: 1.35; opacity: 0.75; margin-top: 26px; max-width: 82%; }
+
+      .price-label { font-size: 18px; letter-spacing: 0.2em; text-transform: uppercase; opacity: 0.55; margin-top: 44px; }
+      .price { font-family: var(--head); font-size: 58px; font-weight: 800; line-height: 1; margin-top: 8px; }
+
+      .foot {
+        position: absolute; left: 76px; right: 76px; bottom: 200px;
+        display: flex; flex-direction: column; align-items: flex-start; gap: 22px;
+      }
+      .cta { background: var(--accent); color: var(--on-accent); padding: 26px 40px; border-radius: 10px; font-size: 34px; font-weight: 700; }
+      .store-name { font-size: 21px; opacity: 0.7; }
+      .store-logo { height: 48px; object-fit: contain; }
+      .legal { position: absolute; left: 76px; right: 76px; bottom: 150px; font-size: 17px; }
+    </style>
+  </head>
+  <body>
+    <div class="photo-wrap">
+      {{#if photoUrl}}<img class="bleed" src="{{photoUrl}}" alt="" />{{/if}}
+    </div>
+
+    <div class="top">
+      <div class="rule"></div>
+      {{#if vehicle.nome}}<div class="eyebrow-line eyebrow">{{vehicle.nome}}</div>{{/if}}
+      <h1 class="head headline">{{headline}}</h1>
+      {{#if sub_headline}}<div class="sub">{{sub_headline}}</div>{{/if}}
+      {{#if price}}
+        <div class="price-label">A partir de</div>
+        <div class="price">{{price}}</div>
+      {{/if}}
+    </div>
+
+    <div class="foot">
+      <span class="cta">{{cta}}</span>
+      {{> store-tag}}
+    </div>
+    {{> legal}}
+  </body>
+</html>

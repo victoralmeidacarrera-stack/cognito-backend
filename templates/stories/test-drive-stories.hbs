@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      {{> base-style}}
+
+      /* No stories o split vira horizontal: foto em cima, argumento embaixo. */
+      body { display: flex; flex-direction: column; }
+
+      .row-photo { position: relative; height: 860px; flex-shrink: 0; background: var(--secondary); }
+      .row-photo::after {
+        content: ''; position: absolute; inset: 0;
+        background: linear-gradient(to bottom, transparent 55%, rgba(0,0,0,0.35));
+      }
+
+      .row-text { flex: 1; padding: 64px 68px 180px; display: flex; flex-direction: column; }
+      .eyebrow-line { font-size: 22px; color: var(--accent); }
+      .headline { font-size: 68px; margin-top: 20px; line-height: 1.02; }
+      .sub { font-size: 28px; line-height: 1.4; opacity: 0.8; margin-top: 20px; }
+
+      .list { margin-top: 32px; display: flex; flex-direction: column; gap: 16px; }
+      .item { display: flex; align-items: flex-start; gap: 14px; font-size: 27px; line-height: 1.25; }
+      .item::before {
+        content: ''; flex-shrink: 0; margin-top: 10px;
+        width: 13px; height: 13px; border-radius: 3px; background: var(--accent);
+      }
+
+      .spacer { flex: 1; }
+      .price-label { font-size: 18px; letter-spacing: 0.18em; text-transform: uppercase; opacity: 0.55; }
+      .price { font-family: var(--head); font-size: 56px; font-weight: 800; color: var(--accent); line-height: 1; margin-top: 6px; }
+      .cta {
+        margin-top: 30px;
+        background: var(--accent); color: var(--on-accent);
+        padding: 28px 34px; border-radius: 18px;
+        font-size: 34px; font-weight: 700;
+        display: flex; align-items: center; justify-content: space-between; gap: 16px;
+      }
+      .cta .arrow { font-size: 38px; line-height: 1; }
+      .store-name { font-size: 20px; opacity: 0.65; margin-top: 22px; }
+      .store-logo { height: 44px; object-fit: contain; margin-top: 22px; }
+      .legal { margin-top: 16px; font-size: 17px; }
+    </style>
+  </head>
+  <body>
+    <div class="row-photo">
+      {{#if photoUrl}}<img class="bleed" src="{{photoUrl}}" alt="" />{{/if}}
+    </div>
+
+    <div class="row-text">
+      {{#if vehicle.nome}}<div class="eyebrow-line eyebrow">{{vehicle.nome}}</div>{{/if}}
+      <h1 class="head headline">{{headline}}</h1>
+      {{#if sub_headline}}<div class="sub">{{sub_headline}}</div>{{/if}}
+
+      {{#if vehicle.highlights.length}}
+        <div class="list">
+          {{#each vehicle.highlights}}<div class="item">{{this}}</div>{{/each}}
+        </div>
+      {{/if}}
+
+      <div class="spacer"></div>
+
+      {{#if price}}
+        <div class="price-label">A partir de</div>
+        <div class="price">{{price}}</div>
+      {{/if}}
+
+      <div class="cta"><span>{{cta}}</span><span class="arrow">→</span></div>
+      {{> store-tag}}
+      {{> legal}}
+    </div>
+  </body>
+</html>

@@ -1,13 +1,20 @@
 import { pino, type LoggerOptions } from 'pino';
-import { env, isProduction } from './env.js';
+import { env } from './env.js';
+
+// pino-pretty é devDependency e NÃO existe no runner de produção (npm ci --omit=dev).
+// Opt-in explícito via LOG_PRETTY=true — nunca inferido de NODE_ENV. O default
+// precisa ser `false`: NODE_ENV tem default 'development' (env.ts), então cair em
+// `!isProduction` fazia um serviço no Railway sem NODE_ENV=production explícito
+// (worker, job pontual) tentar carregar pino-pretty e morrer no boot — exatamente
+// o bug que o opt-in existe para matar. O .env.example já traz LOG_PRETTY=true
+// para o desenvolvimento local.
+const usePretty = env.LOG_PRETTY === 'true';
 
 export const loggerOptions: LoggerOptions = {
   level: env.LOG_LEVEL,
-  // Em prod: JSON estruturado (consumido por Railway/Sentry).
-  // Em dev: pino-pretty para leitura humana.
-  ...(isProduction
-    ? {}
-    : {
+  // pino-pretty para leitura humana; caso contrário JSON estruturado (Railway/Sentry).
+  ...(usePretty
+    ? {
         transport: {
           target: 'pino-pretty',
           options: {
@@ -16,7 +23,8 @@ export const loggerOptions: LoggerOptions = {
             ignore: 'pid,hostname',
           },
         },
-      }),
+      }
+    : {}),
   // Nunca logar segredos.
   redact: {
     paths: [

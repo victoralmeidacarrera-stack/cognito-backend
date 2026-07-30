@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      {{> base-style}}
+
+      /* Minimalista: tipografia grande, muito respiro, foto entrando por baixo
+         com fade. Serve de contraponto às peças cheias no grid do perfil. */
+      body { background: var(--secondary); color: var(--on-secondary); }
+
+      .photo-wrap { position: absolute; left: 0; right: 0; bottom: 0; height: 780px; }
+      .photo-wrap::after {
+        content: ''; position: absolute; inset: 0;
+        background: linear-gradient(to bottom, var(--secondary) 0%, rgba(0,0,0,0) 34%);
+      }
+
+      .top { position: absolute; top: 0; left: 0; right: 0; padding: 76px 76px 0; }
+      .rule { width: 96px; height: 4px; background: var(--accent); }
+      /* Mesmo teto do headline: o eyebrow renderiza make+model+trim e o `trim`
+         que vem do import de catálogo é longo de verdade ("Highline 1.0 TSI
+         Comfortline"). Sem max-width ele passava por baixo da caixa de preço. */
+      .eyebrow-line {
+        margin-top: 26px; font-size: 20px; opacity: 0.65; max-width: 62%;
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      }
+      /* max-width baixo de propósito: a caixa de preço ocupa o canto superior
+         direito e o headline não pode invadi-la. */
+      .headline {
+        font-size: 76px; font-weight: 800; line-height: 1.0;
+        letter-spacing: -0.03em; margin-top: 20px; max-width: 68%;
+      }
+      .sub { font-size: 27px; line-height: 1.35; opacity: 0.75; margin-top: 22px; max-width: 66%; }
+
+      .price-box { position: absolute; top: 76px; right: 76px; text-align: right; }
+      .price-label { font-size: 16px; letter-spacing: 0.2em; text-transform: uppercase; opacity: 0.55; }
+      .price { font-family: var(--head); font-size: 46px; font-weight: 800; line-height: 1; margin-top: 6px; }
+
+      .foot {
+        position: absolute; left: 76px; right: 76px; bottom: 92px;
+        display: flex; align-items: center; justify-content: space-between;
+        gap: 20px; flex-wrap: wrap;
+      }
+      .cta {
+        background: var(--accent); color: var(--on-accent);
+        padding: 20px 36px; border-radius: 8px;
+        font-size: 30px; font-weight: 700;
+      }
+      .store-name { font-size: 19px; opacity: 0.7; }
+      .store-logo { height: 44px; object-fit: contain; }
+      .legal { position: absolute; left: 76px; right: 76px; bottom: 30px; font-size: 16px; }
+    </style>
+  </head>
+  <body>
+    <div class="photo-wrap">
+      {{#if photoUrl}}<img class="bleed" src="{{photoUrl}}" alt="" />{{/if}}
+    </div>
+
+    <div class="top">
+      <div class="rule"></div>
+      {{#if vehicle.nome}}<div class="eyebrow-line eyebrow">{{vehicle.nome}}</div>{{/if}}
+      <h1 class="head headline">{{headline}}</h1>
+      {{#if sub_headline}}<div class="sub">{{sub_headline}}</div>{{/if}}
+    </div>
+
+    {{#if price}}
+      <div class="price-box">
+        <div class="price-label">A partir de</div>
+        <div class="price">{{price}}</div>
+      </div>
+    {{/if}}
+
+    <div class="foot">
+      <span class="cta">{{cta}}</span>
+      {{> store-tag}}
+    </div>
+    {{> legal}}
+  </body>
+</html>

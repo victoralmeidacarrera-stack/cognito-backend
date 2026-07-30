@@ -1,8 +1,11 @@
+import { UserRole } from '@prisma/client';
 import { type FastifyInstance } from 'fastify';
 import { type ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
-import { getTenantDb } from '../../shared/context.js';
-import { NotFoundError } from '../../shared/errors.js';
+import { prisma } from '../../config/prisma.js';
+import { syncOrganizationTemplates } from '../render/template-catalog.js';
+import { getCtx, getTenantDb } from '../../shared/context.js';
+import { ForbiddenError, NotFoundError } from '../../shared/errors.js';
 import { idParamSchema } from '../../shared/schemas.js';
 
 const listTemplatesQuerySchema = z.object({
@@ -28,6 +31,32 @@ export function registerTemplateRoutes(app: FastifyInstance): void {
         orderBy: [{ format: 'asc' }, { name: 'asc' }],
       });
       return { items };
+    },
+  );
+
+  r.post(
+    '/templates/sync',
+    {
+      schema: {
+        response: {
+          200: z.object({ created: z.number(), updated: z.number(), total: z.number() }),
+        },
+        tags: TAGS,
+        summary: 'Provisiona os templates do catálogo nesta organização',
+        description:
+          'Idempotente. Cria as peças que faltam e atualiza nome/dimensões das existentes, ' +
+          'sem alterar o `isActive` — templates desativados pela loja continuam desativados. ' +
+          'Usado no onboarding e quando o catálogo ganha peças novas.',
+      },
+    },
+    async (request) => {
+      const ctx = getCtx(request);
+      if (ctx.role === UserRole.MEMBER) {
+        throw new ForbiddenError('Só OWNER ou ADMIN pode sincronizar templates.');
+      }
+      // PrismaClient global com organizationId explícito: o sync roda em
+      // contexto administrativo e precisa criar linhas para a org do ctx.
+      return syncOrganizationTemplates(prisma, ctx.organizationId);
     },
   );
 

@@ -3,7 +3,15 @@ import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
   {
-    ignores: ['dist/**', 'node_modules/**', 'prisma/migrations/**', 'templates/**', 'scripts/**'],
+    // `.local/` é infra e artefato local (Postgres embutido, previews) — gitignored.
+    ignores: [
+      'dist/**',
+      'node_modules/**',
+      'prisma/migrations/**',
+      'templates/**',
+      'scripts/**',
+      '.local/**',
+    ],
   },
   eslint.configs.recommended,
   ...tseslint.configs.recommendedTypeChecked,

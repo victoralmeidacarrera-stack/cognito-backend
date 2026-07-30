@@ -1,0 +1,6 @@
+{{! Assinatura da loja: logo quando houver, senão o nome. }}
+{{#if store.logoUrl}}
+  <img class="store-logo" src="{{store.logoUrl}}" alt="" />
+{{else if store.name}}
+  <span class="store-name eyebrow">{{store.name}}</span>
+{{/if}}
