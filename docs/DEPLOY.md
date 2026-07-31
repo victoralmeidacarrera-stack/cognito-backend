@@ -82,8 +82,24 @@ Pronto — abra a URL do Vercel de qualquer máquina. 🎉
 1. **Redis**: Upstash (free) → `REDIS_URL=rediss://...` (eviction = `noeviction`),
    ou plugin Redis no Railway.
 2. **Worker**: no Railway, **+ New Service** apontando pro mesmo repo
-   `cognito-backend`, com **Start Command**: `npm run worker:start`.
-   (O Dockerfile já instala o Chromium pro Puppeteer.)
+   `cognito-backend`. (O Dockerfile já instala o Chromium pro Puppeteer.)
+
+   ⚠️ **NÃO configure o Start Command pelo painel** — o config-as-code do repo
+   sobrescreve o painel, e o `railway.json` (do serviço `web`) manda
+   `node dist/server.js`. Um worker configurado só pelo painel sobe uma
+   **segunda cópia da API**: fica verde no Railway, o `/health` responde, e
+   **ninguém consome a fila** — a geração fica presa em `QUEUED` até o front
+   estourar o timeout ("A geração demorou demais…").
+
+   O certo é dar ao worker o **seu próprio arquivo de config**: em
+   Settings → **Config-as-code** (campo _Railway Config File_), aponte para
+   `railway.worker.json` (versionado neste repo: start
+   `node dist/workers/index.js`, sem `healthcheckPath`, porque o worker não
+   escuta HTTP). Depois, **Redeploy**.
+
+   Como conferir que o worker é worker mesmo: nos logs deve aparecer
+   `🛠️  workers iniciados: generate-creative, render-image, send-email`.
+   Se aparecer `🚀 cognito-backend ouvindo em…`, ele está rodando a API.
 3. **Chaves**: `ANTHROPIC_API_KEY` (copy), `FAL_API_KEY` com **saldo** (Flux),
    `R2_*` (guardar o PNG).
 4. Garanta `REDIS_URL` igual nos dois serviços (API e worker).

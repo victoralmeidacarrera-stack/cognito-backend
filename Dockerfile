@@ -38,5 +38,7 @@ COPY templates ./templates
 
 EXPOSE 3333
 
-# Sobrescreva o command no serviço "worker" para: node dist/workers/index.js
+# Default = API. O serviço "worker" troca o start via `railway.worker.json`
+# (config-as-code; o Custom Start Command do painel NÃO vale, pois o arquivo
+# de config sobrescreve o painel).
 CMD ["node", "dist/server.js"]

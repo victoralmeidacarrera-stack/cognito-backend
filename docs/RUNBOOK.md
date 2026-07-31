@@ -228,8 +228,13 @@ curl -s -X POST $API/vehicles/$VEH/photos -H 'content-type: application/json' \
 ## Deploy (Railway)
 
 - Suba Postgres (Neon) e Redis (Upstash) gerenciados.
-- Use o `Dockerfile` (já instala o Chromium) para os dois serviços:
-  - **web**: `npm run start`
-  - **worker**: `npm run worker:start`
+- Use o `Dockerfile` (já instala o Chromium) para os dois serviços. O start de
+  cada um vem do **config-as-code**, não do painel (o arquivo sobrescreve o
+  Custom Start Command):
+  - **web**: `railway.json` → `node dist/server.js`
+  - **worker**: `railway.worker.json` → `node dist/workers/index.js`
+    (aponte esse arquivo em Settings → Config-as-code do serviço `worker`;
+    sem isso ele sobe uma segunda API e a fila não é consumida — ver
+    `docs/DEPLOY.md`)
 - Configure todas as variáveis de ambiente no painel do Railway.
 - Rode `npm run prisma:deploy` no release (migrations).
