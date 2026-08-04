@@ -1,11 +1,13 @@
 # Runbook — rodando o ciclo 100% real
 
 Passo a passo para rodar o fluxo completo de verdade: cadastro → briefing →
-geração com Claude → render (PNG) → upload no R2 → aprovação. Cobre como obter
+geração da copy (IA) → render (PNG) → upload no R2 → aprovação. Cobre como obter
 cada serviço externo.
 
-> Tudo o que tem custo: **Anthropic** (tokens) e, dependendo do volume, R2/Neon/
-> Upstash (têm free tier generoso). Clave tudo num `.env` que NUNCA vai pro git.
+> Tudo o que tem custo: **fal.ai** (copy via any-llm + fundo via Flux — é o
+> default, tudo numa conta só) e, dependendo do volume, R2/Neon/Upstash (têm
+> free tier generoso). Só se você trocar para `COPY_PROVIDER=anthropic` entra
+> custo de tokens na Anthropic. Clave tudo num `.env` que NUNCA vai pro git.
 
 ---
 
@@ -60,19 +62,47 @@ npm run db:seed         # org demo + admin + brand book + templates
 
 ---
 
-## 2. Anthropic (Claude)
+## 2. IA de copy — fal.ai (default)
+
+A copy sai do endpoint **`fal-ai/any-llm`**, na mesma conta que gera o fundo
+(Flux): uma chave só para toda a IA.
+
+1. https://fal.ai/dashboard/keys → cria uma key.
+2. Garanta **saldo** na conta (Billing) — sem saldo, a geração cai no fallback
+   de dev fora de produção e falha em produção.
+
+```
+COPY_PROVIDER=fal
+FAL_API_KEY=...
+FAL_LLM_MODEL=google/gemini-2.5-flash     # tier standard; premium custa ~10x
+FAL_VISION_MODEL=google/gemini-2.5-flash  # análise de referência de layout
+FAL_LLM_COST_MICROCENTS=0                 # custo por chamada, p/ telemetria
+```
+
+> O any-llm cobra **por request** e **não devolve contagem de tokens**: o
+> `UsageLog` grava tokens zerados e usa `FAL_LLM_COST_MICROCENTS` como custo
+> fixo por chamada (micro-centavos de USD). `0` significa "desconhecido", não
+> "grátis" — pegue o valor real no dashboard do fal e preencha.
+
+### 2b. Anthropic (Claude) — fallback opcional
 
 1. https://console.anthropic.com → **API Keys** → cria uma key.
 2. Garanta créditos/billing ativo.
 
 ```
+COPY_PROVIDER=anthropic
 ANTHROPIC_API_KEY=sk-ant-...
 ANTHROPIC_MODEL_BRIEFING=claude-sonnet-4-5
 ANTHROPIC_MODEL_VARIATIONS=claude-haiku-4-5-20251001
 ```
 
-> O BrandBook é enviado com `cache_control: ephemeral` — a 2ª geração em diante
-> da mesma org paga ~10% nos tokens do bloco de marca (cache hit).
+> Só neste caminho existe **prompt caching**: o BrandBook é enviado com
+> `cache_control: ephemeral` — a 2ª geração em diante da mesma org paga ~10%
+> nos tokens do bloco de marca (cache hit).
+
+Há ainda `COPY_PROVIDER=openai` para qualquer API compatível com OpenAI
+chat/completions (`LLM_BASE_URL` + `LLM_API_KEY` + `LLM_MODEL`) — ver
+`docs/LOCAL.md`.
 
 ---
 
@@ -201,7 +231,7 @@ curl -s $API/usage/quota | jq
 ```
 
 Fluxo por baixo: `generate` → checa quota → enfileira `generate-creative`
-(Claude Sonnet) → cria N criativos → enfileira `render-image` (Handlebars →
+(copy pelo provedor configurado) → cria N criativos → enfileira `render-image` (Handlebars →
 Puppeteer → PNG → R2) → cria `Approval` pendente. Acompanhe os logs do
 `npm run worker`.
 

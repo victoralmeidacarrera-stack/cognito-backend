@@ -25,25 +25,39 @@ const envSchema = z.object({
   REDIS_URL: z.string().url(),
 
   // ── Provedor de copy (IA de texto) ──
-  // 'anthropic' (default) usa o SDK da Anthropic com prompt caching.
+  // 'fal' (default) usa o endpoint fal-ai/any-llm da fal.ai — mesma conta/chave
+  //   do Flux, centralizando o custo de IA num fornecedor só (FAL_API_KEY).
+  // 'anthropic' é o fallback: SDK da Anthropic com prompt caching no BrandBook.
   // 'openai' usa QUALQUER API compatível com OpenAI chat/completions
   // (OpenAI, DeepSeek, Groq, Gemini OpenAI-compat, Ollama local, ...):
   //   COPY_PROVIDER=openai
   //   LLM_BASE_URL=https://api.deepseek.com/v1   (ou http://localhost:11434/v1 p/ Ollama)
   //   LLM_API_KEY=sk-...
   //   LLM_MODEL=deepseek-chat
-  COPY_PROVIDER: z.enum(['anthropic', 'openai']).default('anthropic'),
+  COPY_PROVIDER: z.enum(['fal', 'anthropic', 'openai']).default('fal'),
   LLM_BASE_URL: z.string().url().optional(),
   LLM_API_KEY: z.string().optional(),
   LLM_MODEL: z.string().optional(),
 
-  // Anthropic (usado quando COPY_PROVIDER=anthropic; opcional se usar outro provedor)
+  // Anthropic: usado quando COPY_PROVIDER=anthropic e, com qualquer provedor,
+  // como último recurso da análise de referência (visão) se faltar FAL_API_KEY.
   ANTHROPIC_API_KEY: z.string().optional(),
   ANTHROPIC_MODEL_BRIEFING: z.string().default('claude-sonnet-4-5'),
   ANTHROPIC_MODEL_VARIATIONS: z.string().default('claude-haiku-4-5-20251001'),
 
-  // fal.ai (placeholder)
+  // fal.ai — imagem (Flux) e, com COPY_PROVIDER=fal, também a copy (any-llm).
   FAL_API_KEY: z.string().optional(),
+  // Modelo de texto do fal-ai/any-llm. gemini-2.5-flash é tier standard;
+  // modelos premium (ex.: anthropic/claude-sonnet-4.5) custam ~10x.
+  FAL_LLM_MODEL: z.string().default('google/gemini-2.5-flash'),
+  // Modelo de visão do fal-ai/any-llm/vision (análise de referência de layout).
+  FAL_VISION_MODEL: z.string().default('google/gemini-2.5-flash'),
+  // ATENÇÃO: o fal-ai/any-llm NÃO devolve contagem de tokens (cobra por request),
+  // então o custo não é calculável — é este valor fixo, por CHAMADA, em
+  // micro-centavos de USD (1 microcent = 1e-8 USD), só para telemetria.
+  // O preço do any-llm não é público: DEFAULT 0 = "custo desconhecido", não
+  // "de graça". Leia o valor real no dashboard do fal e preencha aqui.
+  FAL_LLM_COST_MICROCENTS: z.coerce.number().int().nonnegative().default(0),
 
   // Override do prompt do fundo Flux (ver modules/backgrounds/background-prompt.ts).
   // Suporta o placeholder {vehicle} — substituído pela descrição do veículo.

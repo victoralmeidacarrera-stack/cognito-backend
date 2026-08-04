@@ -33,17 +33,17 @@ export async function processGenerateCreative(job: Job): Promise<void> {
     try {
       generation = await generateCopy(ctx);
     } catch (err) {
-      // Fora de produção, Claude indisponível (sem chave/sem crédito) não trava
+      // Fora de produção, IA indisponível (sem chave/sem crédito) não trava
       // o fluxo: usa copy determinística de fallback e segue o pipeline real.
       if (isProduction) throw err;
-      log.warn({ err }, 'Claude indisponível — usando copy de fallback (dev)');
+      log.warn({ err }, 'IA de copy indisponível — usando copy de fallback (dev)');
       generation = {
         output: devFallbackOutput(ctx),
         usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 },
         model: 'dev-fallback',
       };
     }
-    const { output, usage, model } = generation;
+    const { output, usage, model, costMicrocents } = generation;
     log.info(
       {
         model,
@@ -54,7 +54,7 @@ export async function processGenerateCreative(job: Job): Promise<void> {
       'copy gerada',
     );
     if (model !== 'dev-fallback') {
-      await recordAiUsage({ organizationId, briefingId, model, usage });
+      await recordAiUsage({ organizationId, briefingId, model, usage, costMicrocents });
     }
 
     const templates = await db.template.findMany({

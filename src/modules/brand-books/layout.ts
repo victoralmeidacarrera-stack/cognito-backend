@@ -7,8 +7,8 @@ import { z } from 'zod';
  *
  * Config persistida em `BrandBook.layout` (JSON). Controla ONDE e COMO o
  * texto (headline/preço/CTA) é composto por cima do fundo no render (hbs →
- * Puppeteer). O usuário edita pelos controles da tela de Brand book; a IA
- * (Claude vision) pode pré-preencher a partir de uma imagem de referência.
+ * Puppeteer). O usuário edita pelos controles da tela de Brand book; a IA de
+ * visão pode pré-preencher a partir de uma imagem de referência.
  *
  * Fontes ficam num conjunto curado (carregado no template via @import).
  */

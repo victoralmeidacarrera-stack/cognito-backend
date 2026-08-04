@@ -17,13 +17,13 @@ npm install
 
 `.env` do backend a partir do `.env.example`. Para o fluxo completo:
 
-| Variável            | Precisa?  | Sem ela...                                                              |
-| ------------------- | --------- | ----------------------------------------------------------------------- |
-| `DATABASE_URL`      | ✅ sim    | use `postgresql://cognito:cognito@localhost:5432/cognito?schema=public` |
-| `ANTHROPIC_API_KEY` | recomendo | copy sai do fallback local (genérica, marca `dev-fallback`)             |
-| `FAL_API_KEY`       | recomendo | sem fundo Flux (cor sólida) e sem storage p/ imagens                    |
-| `REDIS_URL`         | não (dev) | jobs rodam inline no processo da API                                    |
-| `R2_*`              | não (dev) | PNGs vão pro storage do fal (URL expira em 30d)                         |
+| Variável            | Precisa?  | Sem ela...                                                                 |
+| ------------------- | --------- | -------------------------------------------------------------------------- |
+| `DATABASE_URL`      | ✅ sim    | use `postgresql://cognito:cognito@localhost:5432/cognito?schema=public`    |
+| `FAL_API_KEY`       | ✅ sim    | sem copy (provedor default `fal`), sem fundo Flux e sem storage p/ imagens |
+| `ANTHROPIC_API_KEY` | não       | só com `COPY_PROVIDER=anthropic`, ou sem `FAL_API_KEY` (ver abaixo)        |
+| `REDIS_URL`         | não (dev) | jobs rodam inline no processo da API                                       |
+| `R2_*`              | não (dev) | PNGs vão pro storage do fal (URL expira em 30d)                            |
 
 ## Subir (3 terminais)
 
@@ -41,7 +41,7 @@ cd ../cognito-frontend && npm run dev
 ```
 
 Abra **http://localhost:5173** → botão **Gerar criativos**. O fluxo real roda:
-briefing → copy (Claude ou fallback) → fundo (Flux) → render (Puppeteer) →
+briefing → copy (fal any-llm ou fallback) → fundo (Flux) → render (Puppeteer) →
 imagem visível nos cards. `GET /health/ready` mostra o estado da infra.
 
 Opcional: `npm run dev:demo` insere 4 criativos prontos na Biblioteca.
@@ -54,13 +54,32 @@ Todos **só existem fora de produção** e logam warning quando ativam:
   (mesmos processors dos workers). Em produção, BullMQ/Redis é obrigatório.
 - **Sem R2** → `render.service.ts` sobe o PNG final pro storage do fal
   (`fal.media`, expira em 30d). O fundo Flux já caía pra CDN do fal.
-- **Sem Claude** → `generate-creative.ts` usa `devFallbackOutput()` (copy
-  determinística do veículo/briefing, model `dev-fallback`). Com
-  `ANTHROPIC_API_KEY` válida, a copy real volta sozinha.
+- **Sem IA de copy** → `generate-creative.ts` usa `devFallbackOutput()` (copy
+  determinística do veículo/briefing, model `dev-fallback`). Com a chave do
+  provedor configurado válida (`FAL_API_KEY` no default), a copy real volta
+  sozinha.
 
-## Trocar a IA da copy (sem usar o Claude)
+## Trocar a IA da copy
 
-Qualquer API compatível com OpenAI chat/completions serve — no `.env`:
+Default (`COPY_PROVIDER=fal`): a copy sai do endpoint **`fal-ai/any-llm`**, na
+mesma conta/chave do Flux — um fornecedor só para toda a IA. Cobra **por
+request** (a resposta não traz tokens):
+
+```
+COPY_PROVIDER=fal
+FAL_API_KEY=...
+FAL_LLM_MODEL=google/gemini-2.5-flash     # tier standard; premium custa ~10x
+FAL_VISION_MODEL=google/gemini-2.5-flash  # análise de referência de layout
+FAL_LLM_COST_MICROCENTS=0                 # custo por chamada (0 = desconhecido)
+```
+
+Modelos premium (`anthropic/claude-sonnet-4.5`, `openai/gpt-5-chat`,
+`google/gemini-2.5-pro`...) funcionam nas mesmas vars, custando ~10x.
+
+Alternativa 1 — **Anthropic** (fallback, único caminho com prompt caching no
+BrandBook): `COPY_PROVIDER=anthropic` + `ANTHROPIC_API_KEY`.
+
+Alternativa 2 — qualquer API compatível com **OpenAI chat/completions**:
 
 ```
 COPY_PROVIDER=openai
@@ -73,7 +92,15 @@ Exemplos de base URL: DeepSeek `https://api.deepseek.com/v1` · Groq
 `https://api.groq.com/openai/v1` · Gemini
 `https://generativelanguage.googleapis.com/v1beta/openai` · Ollama local
 `http://localhost:11434/v1` (sem LLM_API_KEY). A saída passa pela mesma
-validação de schema; com `COPY_PROVIDER=openai` a chave Anthropic é dispensável.
+validação de schema nos três caminhos.
+
+**Quando a `ANTHROPIC_API_KEY` é usada de fato:** na copy, só com
+`COPY_PROVIDER=anthropic`. Na análise de referência de layout
+(`POST /brand-books/:id/analyze-reference`), que precisa de um modelo de
+**visão**, o provedor `openai` não tem caminho próprio: ela usa o
+`fal-ai/any-llm/vision` sempre que `COPY_PROVIDER` não é `anthropic` e a
+`FAL_API_KEY` existe. Sem `FAL_API_KEY`, cai no Claude vision — e aí a chave da
+Anthropic passa a ser necessária mesmo com `COPY_PROVIDER=openai`.
 
 ## Mudar o prompt do fundo (Flux)
 
@@ -113,5 +140,6 @@ Posição/tamanho do recorte por formato: `COMPOSITE_LAYOUT` em
   no terminal antes do comando).
 - **Imagem não aparece no card** — status do criativo `FAILED`? Veja o log da
   API (o render inline loga o erro). `FAL_API_KEY` configurada?
-- **Copy sempre genérica** — a chave Anthropic do `.env` é placeholder;
-  troque por uma real (console.anthropic.com) e gere de novo.
+- **Copy sempre genérica** (model `dev-fallback`) — a chave do provedor de copy
+  está ausente/inválida ou sem saldo. No default, confira `FAL_API_KEY`
+  (fal.ai/dashboard/keys); com `COPY_PROVIDER=anthropic`, `ANTHROPIC_API_KEY`.

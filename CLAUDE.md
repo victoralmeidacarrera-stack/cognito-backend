@@ -8,10 +8,17 @@ Frontend separado: repo `cognito-frontend` (pasta irmã).
 ## Stack
 
 Node 20 + TypeScript **strict** (ESM/NodeNext) · Fastify 5 · Prisma 6 + PostgreSQL
-· BullMQ + Redis (ioredis) · Puppeteer (render PNG) · Anthropic SDK (Sonnet 4.5
-copy, Haiku p/ variações; **prompt caching** no BrandBook) · **fal.ai Flux 1.1 Pro**
-(`fal-ai/flux-pro/v1.1`, gera o FUNDO — texto nunca vem da IA) · Cloudflare R2 ·
-Resend · Sentry + pino · Clerk (auth) · OpenAPI/Swagger em `/docs`.
+· BullMQ + Redis (ioredis) · Puppeteer (render PNG) · **fal.ai** para toda a IA:
+copy pelo **`fal-ai/any-llm`** (default `COPY_PROVIDER=fal`, modelo
+`google/gemini-2.5-flash` via `FAL_LLM_MODEL`; visão em `fal-ai/any-llm/vision`)
+e fundo pelo **Flux 1.1 Pro** (`fal-ai/flux-pro/v1.1` — texto nunca vem da IA) ·
+Anthropic SDK como **fallback** de copy (`COPY_PROVIDER=anthropic`: Sonnet 4.5,
+Haiku p/ variações, **prompt caching** no BrandBook — único caminho com cache) ·
+Cloudflare R2 · Resend · Sentry + pino · Clerk (auth) · OpenAPI/Swagger em `/docs`.
+
+> O any-llm cobra **por request** e não devolve tokens: o `UsageLog` grava tokens
+> zerados e usa `FAL_LLM_COST_MICROCENTS` (custo fixo por chamada, micro-centavos
+> de USD; `0` = desconhecido) como override do cálculo por token.
 
 ## Comandos
 
@@ -62,9 +69,10 @@ a API sobe mesmo assim (Prisma/Redis são lazy; `/health/ready` mostra degradado
 
 ## Estado atual
 
-Fases 1–4 + telas prontas e no `main`. Geração de copy (Claude) + render (Handlebars
-→Puppeteer→R2) + fila (BullMQ) implementados. fal.ai integrado (`config/fal.ts`),
-validado (falta saldo na conta fal). **Flux fiado no pipeline (opção C):**
+Fases 1–4 + telas prontas e no `main`. Geração de copy (fal `any-llm`; Claude/OpenAI
+como fallback) + render (Handlebars →Puppeteer→R2) + fila (BullMQ) implementados.
+fal.ai integrado (`config/fal.ts`) e validado — o `any-llm` respondeu com a chave
+real em 03/08/2026 (a conta tem saldo). **Flux fiado no pipeline (opção C):**
 `Creative.backgroundUrl` (schema+migration `20260617000000_creative_background_url`);
 `modules/backgrounds` resolve o fundo 1x por briefing (foto real do veículo → senão
 2 fundos Flux persistidos no R2 → senão cor sólida), reusados round-robin entre as

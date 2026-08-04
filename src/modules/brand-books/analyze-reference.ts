@@ -1,4 +1,6 @@
 import { anthropic, ANTHROPIC_MODELS } from '../../config/anthropic.js';
+import { env } from '../../config/env.js';
+import { falEnabled, generateVisionText } from '../../config/fal.js';
 import { logger } from '../../config/logger.js';
 import { DomainError } from '../../shared/errors.js';
 import { layoutSchema, LAYOUT_FONTS, TEXT_POSITIONS, type Layout } from './layout.js';
@@ -40,11 +42,20 @@ Responda APENAS com um objeto JSON (sem markdown, sem comentários) com estas ch
 
 Não invente texto; descreva só a disposição visual.`;
 
-/**
- * Analisa uma imagem de referência com Claude vision e devolve uma sugestão
- * de layout (parcial). Requer ANTHROPIC_API_KEY válida.
- */
-export async function analyzeReferenceLayout(imageUrl: string): Promise<Partial<Layout>> {
+const USER_PROMPT = 'Descreva a disposição do texto desta referência no formato pedido.';
+
+/** Análise via fal-ai/any-llm/vision: a imagem vai por URL (o fal baixa). */
+async function analyzeWithFal(imageUrl: string): Promise<string> {
+  return generateVisionText({
+    prompt: USER_PROMPT,
+    systemPrompt: SYSTEM,
+    imageUrls: [imageUrl],
+    maxTokens: 512,
+  });
+}
+
+/** Análise via Claude vision: a imagem vai em base64 (validada antes). */
+async function analyzeWithAnthropic(imageUrl: string): Promise<string> {
   const { data, mediaType } = await fetchAsBase64(imageUrl);
 
   const response = await anthropic.messages.create({
@@ -56,18 +67,29 @@ export async function analyzeReferenceLayout(imageUrl: string): Promise<Partial<
         role: 'user',
         content: [
           { type: 'image', source: { type: 'base64', media_type: mediaType, data } },
-          {
-            type: 'text',
-            text: 'Descreva a disposição do texto desta referência no formato pedido.',
-          },
+          { type: 'text', text: USER_PROMPT },
         ],
       },
     ],
   });
 
-  const text = response.content
-    .flatMap((b) => (b.type === 'text' ? [b.text] : []))
-    .join('\n')
+  return response.content.flatMap((b) => (b.type === 'text' ? [b.text] : [])).join('\n');
+}
+
+/**
+ * Analisa uma imagem de referência com a IA de visão e devolve uma sugestão de
+ * layout (parcial), validada igual nos dois caminhos.
+ *
+ * Escolha do caminho: Claude vision só com `COPY_PROVIDER=anthropic` (ou como
+ * último recurso, se a FAL_API_KEY não estiver configurada). Qualquer outro
+ * provedor usa o fal-ai/any-llm/vision — inclusive `openai`, que não tem
+ * endpoint de visão próprio aqui e, sem isso, discaria a Anthropic sem chave.
+ */
+export async function analyzeReferenceLayout(imageUrl: string): Promise<Partial<Layout>> {
+  const useFal = env.COPY_PROVIDER !== 'anthropic' && falEnabled();
+  const raw = useFal ? await analyzeWithFal(imageUrl) : await analyzeWithAnthropic(imageUrl);
+
+  const text = raw
     .replace(/^```(?:json)?\s*/i, '')
     .replace(/\s*```$/i, '')
     .trim();

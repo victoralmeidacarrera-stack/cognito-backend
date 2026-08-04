@@ -9,8 +9,10 @@ concessionárias de veículos no Brasil. Monolito modular bem feito.
 - **Dados:** Prisma 6 + PostgreSQL (Neon em prod, Postgres local via Docker)
 - **Filas:** BullMQ + Redis (Upstash em prod)
 - **Render:** Puppeteer headless (Handlebars → PNG)
-- **IA:** Anthropic SDK (Sonnet 4.5 briefing, Haiku 4.5 variações) com prompt caching
-- **Imagem:** fal.ai (Flux 1.1 Pro) — _placeholder_
+- **IA (copy):** fal.ai `fal-ai/any-llm` (default `COPY_PROVIDER=fal`, modelo
+  `google/gemini-2.5-flash`); fallback Anthropic SDK (Sonnet 4.5 briefing, Haiku
+  4.5 variações) com prompt caching, e `openai` p/ APIs compatíveis
+- **IA (imagem):** fal.ai (Flux 1.1 Pro) — fundo dos criativos
 - **Storage:** Cloudflare R2 · **Email:** Resend
 - **Observabilidade:** Sentry + pino · **Auth:** Clerk · **Deploy:** Railway
 
@@ -39,7 +41,7 @@ tests/       Vitest (unit)
 
 ```bash
 # 1. Variáveis de ambiente
-cp .env.example .env   # preencha ANTHROPIC_API_KEY etc.
+cp .env.example .env   # preencha FAL_API_KEY (copy + imagem) etc.
 
 # 2. Infra (Postgres + Redis)
 docker compose up -d
@@ -105,9 +107,10 @@ em `GET /docs`** (Swagger UI) e `GET /docs/json` (OpenAPI). Guia de integração
 | POST   | `/webhooks/clerk`              | provisionamento (svix, sem auth)  |
 
 Fluxo de geração: `POST /briefings/:id/generate` → checa quota → enfileira
-`generate-creative` (Claude Sonnet + prompt caching no BrandBook) → cria 1
-`Creative` por variação → enfileira `render-image` (Handlebars → Puppeteer →
-PNG → R2) → cria `Approval` pendente.
+`generate-creative` (copy pelo provedor de `COPY_PROVIDER`: `fal-ai/any-llm` por
+default, ou Claude Sonnet com prompt caching no BrandBook) → cria 1 `Creative`
+por variação → enfileira `render-image` (Handlebars → Puppeteer → PNG → R2) →
+cria `Approval` pendente.
 
 ## Health checks
 
@@ -130,13 +133,14 @@ PNG → R2) → cria `Approval` pendente.
 
 - **Fase 1:** scaffolding, schema, config, health. ✅
 - **Fase 2:** auth (Clerk + bypass dev), isolamento multi-tenant (Prisma
-  extension), quotas, módulos CRUD, generation (Claude + caching), workers
-  BullMQ, render (Puppeteer → R2), aprovações, notificações. ✅
+  extension), quotas, módulos CRUD, generation (Claude + caching — hoje o
+  provedor default da copy é o `fal-ai/any-llm`), workers BullMQ, render
+  (Puppeteer → R2), aprovações, notificações. ✅
 - **Fase 3:** upload de fotos (R2 presigned), testes (Vitest), rate limiting,
   e-mail de criativos prontos, deploy Railway (Dockerfile + Chromium). fal.ai
   segue como stub pluggável. ✅
 - **Próximos:** auth Clerk em produção, integração fal.ai real, observabilidade
   Sentry no fluxo, painel de métricas de uso/custo.
 
-> Para rodar o ciclo completo de verdade (Postgres, Redis, Anthropic, R2,
+> Para rodar o ciclo completo de verdade (Postgres, Redis, fal.ai, R2,
 > Resend, Clerk, Chromium), veja **[docs/RUNBOOK.md](docs/RUNBOOK.md)**.

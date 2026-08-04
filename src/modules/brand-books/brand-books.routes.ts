@@ -180,14 +180,19 @@ export function registerBrandBookRoutes(app: FastifyInstance): void {
     },
   );
 
-  // Analisa uma referência com Claude vision e devolve sugestão de layout.
+  // Analisa uma referência com a IA de visão (fal any-llm/vision, ou Claude
+  // vision com COPY_PROVIDER=anthropic) e devolve sugestão de layout.
   // Não persiste: o frontend aplica ao formulário e o usuário salva se quiser.
   r.post(
     '/brand-books/:id/analyze-reference',
     {
       schema: {
         params: idParamSchema,
-        body: z.object({ imageUrl: z.string().min(1) }),
+        // .url() é obrigatório: no caminho fal a URL é repassada a um terceiro,
+        // que faz o download por conta própria (sem o teto de 5MB do caminho
+        // anthropic). As URLs geradas pelo app (upload de referência) já são
+        // absolutas — R2 ou storage do fal.
+        body: z.object({ imageUrl: z.string().url() }),
         tags: TAGS,
         summary: 'Sugere layout a partir de uma referência (IA)',
       },

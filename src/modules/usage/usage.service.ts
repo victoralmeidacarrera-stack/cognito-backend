@@ -90,12 +90,22 @@ export async function recordVariationUsage(input: {
   });
 }
 
-/** Registra consumo de tokens de IA (telemetria + custo). */
+/**
+ * Registra consumo de IA (telemetria + custo).
+ * `costMicrocents` é um override para provedores que cobram por request e não
+ * devolvem tokens (fal.ai any-llm):
+ * - `undefined` (campo ausente) → custo estimado a partir dos tokens;
+ * - `null` → grava `null` = "não medido" (a coluna é `Int?`). NÃO usar `0`:
+ *   isso tornaria "custo desconhecido" indistinguível de "custo zero" e faria
+ *   qualquer SUM(costMicrocents) reportar R$ 0,00 de custo de IA para sempre;
+ * - número → esse valor.
+ */
 export async function recordAiUsage(input: {
   organizationId: string;
   briefingId?: string | undefined;
   model: string;
   usage: TokenUsage;
+  costMicrocents?: number | null | undefined;
 }): Promise<void> {
   await prisma.usageLog.create({
     data: {
@@ -109,7 +119,12 @@ export async function recordAiUsage(input: {
       outputTokens: input.usage.outputTokens,
       cacheReadTokens: input.usage.cacheReadTokens,
       cacheWriteTokens: input.usage.cacheWriteTokens,
-      costMicrocents: estimateCostMicrocents(input.model, input.usage),
+      // `??` não serve aqui: ele colapsaria o `null` explícito ("não medido")
+      // na estimativa por token — que, com tokens zerados, daria 0.
+      costMicrocents:
+        input.costMicrocents === undefined
+          ? estimateCostMicrocents(input.model, input.usage)
+          : input.costMicrocents,
     },
   });
 }

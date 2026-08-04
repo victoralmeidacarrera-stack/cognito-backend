@@ -1,10 +1,11 @@
 /* Preview ponta-a-ponta de UM criativo, sem precisar de Postgres/Redis.
- * Roda o pipeline real: Claude (copy) -> Flux (fundo) -> template Handlebars
+ * Roda o pipeline real: IA de copy (COPY_PROVIDER) -> Flux (fundo) -> Handlebars
  * -> Puppeteer (PNG) -> upload pro storage do fal -> imprime o LINK.
  *
  * Rode: npx tsx scripts/preview-creative.ts
  */
 import type { BrandBook, Vehicle } from '@prisma/client';
+import { env } from '../src/config/env.js';
 import { generateImage, uploadToFalStorage } from '../src/config/fal.js';
 import { closeBrowser } from '../src/config/puppeteer.js';
 import type { GenerationContext } from '../src/modules/generation/generation.prompt.js';
@@ -13,7 +14,7 @@ import { renderToPng } from '../src/modules/render/render.service.js';
 import type { CreativeCopy } from '../src/shared/schemas.js';
 import { formatPriceBRL } from '../src/shared/utils.js';
 
-// Copy de reserva caso a key da Anthropic não esteja válida — mantém o preview
+// Copy de reserva caso a key do provedor de copy não esteja válida — mantém o preview
 // funcionando (o fundo Flux e o render continuam reais).
 const FALLBACK_COPY: CreativeCopy = {
   headline: 'Nivus 2025 com IPVA grátis',
@@ -68,7 +69,7 @@ const ctx: GenerationContext = {
 };
 
 async function main(): Promise<void> {
-  console.log('① Claude gerando a copy...');
+  console.log(`① IA de copy (${env.COPY_PROVIDER}) gerando a copy...`);
   let copy: CreativeCopy;
   try {
     const { output, model } = await generateCopy(ctx);
@@ -77,7 +78,7 @@ async function main(): Promise<void> {
     copy = v;
     console.log(`   headline: "${copy.headline}"  |  cta: "${copy.cta}"  (${model})`);
   } catch (err) {
-    console.warn(`   ⚠ Claude indisponível (${err instanceof Error ? err.message : err}).`);
+    console.warn(`   ⚠ IA de copy indisponível (${err instanceof Error ? err.message : err}).`);
     console.warn('   → usando copy de exemplo; o fundo e o render seguem reais.');
     copy = FALLBACK_COPY;
   }

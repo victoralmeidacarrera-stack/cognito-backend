@@ -1,6 +1,7 @@
 import type Anthropic from '@anthropic-ai/sdk';
 import { anthropic, ANTHROPIC_MODELS, type TokenUsage } from '../../config/anthropic.js';
 import { env } from '../../config/env.js';
+import { generateText } from '../../config/fal.js';
 import { prisma } from '../../config/prisma.js';
 import { type TenantPrisma } from '../../config/tenant.js';
 import { DomainError, NotFoundError } from '../../shared/errors.js';
@@ -16,6 +17,13 @@ export interface GenerationResult {
   output: ClaudeOutput;
   usage: TokenUsage;
   model: string;
+  /**
+   * Custo já conhecido da chamada, em micro-centavos de USD. Só é preenchido
+   * por provedores que cobram por request e não devolvem tokens (fal.ai);
+   * `null` = medido como desconhecido (grava `null` no UsageLog); ausente
+   * (`undefined`) = estimar o custo a partir de `usage`.
+   */
+  costMicrocents?: number | null;
 }
 
 /** Carrega tudo que a geração precisa, já isolado por org via tenant db. */
@@ -90,15 +98,41 @@ function parseAndValidate(raw: string): ClaudeOutput {
 
 /**
  * Gera a copy com o provedor configurado (COPY_PROVIDER):
- * - 'anthropic' (default): SDK da Anthropic com prompt caching no BrandBook.
+ * - 'fal' (default): endpoint fal-ai/any-llm, na mesma conta do Flux
+ *   (FAL_API_KEY + FAL_LLM_MODEL). Cobra por request, não por token.
+ * - 'anthropic' (fallback): SDK da Anthropic com prompt caching no BrandBook.
  * - 'openai': qualquer API compatível com OpenAI chat/completions
  *   (OpenAI, DeepSeek, Groq, Gemini OpenAI-compat, Ollama...), via
  *   LLM_BASE_URL + LLM_API_KEY + LLM_MODEL.
- * A saída passa pela MESMA validação de schema nos dois caminhos.
+ * A saída passa pela MESMA validação de schema nos três caminhos.
  */
 export async function generateCopy(ctx: GenerationContext): Promise<GenerationResult> {
+  if (env.COPY_PROVIDER === 'fal') return generateCopyFal(ctx);
   if (env.COPY_PROVIDER === 'openai') return generateCopyOpenAI(ctx);
   return generateCopyAnthropic(ctx);
+}
+
+/**
+ * fal-ai/any-llm: system + user em texto puro (sem prompt caching — o endpoint
+ * não expõe isso). A resposta não traz tokens, então o usage vai zerado e o
+ * custo entra como valor fixo por chamada (FAL_LLM_COST_MICROCENTS). Com o
+ * default 0 ("preço real ainda não preenchido"), grava `null` = não medido —
+ * gravar 0 mentiria que a IA saiu de graça.
+ */
+async function generateCopyFal(ctx: GenerationContext): Promise<GenerationResult> {
+  const raw = await generateText({
+    prompt: buildUserPrompt(ctx),
+    systemPrompt: buildSystemText(ctx),
+    temperature: 0.7,
+    maxTokens: 2048,
+  });
+
+  return {
+    output: parseAndValidate(raw),
+    usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 },
+    model: `fal:${env.FAL_LLM_MODEL}`,
+    costMicrocents: env.FAL_LLM_COST_MICROCENTS || null,
+  };
 }
 
 async function generateCopyAnthropic(ctx: GenerationContext): Promise<GenerationResult> {
@@ -174,8 +208,15 @@ async function generateCopyOpenAI(ctx: GenerationContext): Promise<GenerationRes
   return { output, usage, model: `openai:${env.LLM_MODEL}` };
 }
 
+/** O que falta configurar, por provedor — citado na copy de fallback de dev. */
+const COPY_PROVIDER_ENV_HINT: Record<typeof env.COPY_PROVIDER, string> = {
+  fal: 'FAL_API_KEY',
+  anthropic: 'ANTHROPIC_API_KEY',
+  openai: 'LLM_BASE_URL + LLM_MODEL',
+};
+
 /**
- * Copy determinística de fallback para DEV (Claude indisponível/sem chave).
+ * Copy determinística de fallback para DEV (IA indisponível/sem chave).
  * Montada a partir do veículo/briefing; nunca usada em produção — o worker
  * só cai aqui fora de produção, com warning no log e model 'dev-fallback'.
  */
@@ -217,7 +258,8 @@ export function devFallbackOutput(ctx: GenerationContext): ClaudeOutput {
     },
     emoji_sugerido: '🚗',
     justificativa:
-      'Copy de fallback gerada localmente (sem Claude). Configure ANTHROPIC_API_KEY para copy real.',
+      `Copy de fallback gerada localmente (sem IA). Configure ${COPY_PROVIDER_ENV_HINT[env.COPY_PROVIDER]} ` +
+      'para copy real.',
   };
 }
 

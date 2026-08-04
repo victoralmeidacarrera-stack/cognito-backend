@@ -34,15 +34,25 @@ verdade, ligue o **Clerk**: `VITE_CLERK_PUBLISHABLE_KEY` no front, e
 1. https://railway.app → **New Project → Deploy from GitHub repo** →
    `cognito-backend`. O Railway detecta o `Dockerfile` e builda sozinho.
 2. Em **Variables**, defina:
+
    ```
    NODE_ENV=production
    DATABASE_URL=<a string do Neon>
    AUTH_DEV_BYPASS=true            # (ou false, com Clerk)
-   ANTHROPIC_API_KEY=<quando for gerar>
-   FAL_API_KEY=<sua chave fal.ai>
+   COPY_PROVIDER=fal               # default; a copy sai do fal-ai/any-llm
+   FAL_API_KEY=<sua chave fal.ai>  # copy (any-llm) + fundo (Flux), mesma conta
+   FAL_LLM_MODEL=google/gemini-2.5-flash     # standard; premium custa ~10x
+   FAL_VISION_MODEL=google/gemini-2.5-flash  # análise de referência de layout
+   FAL_LLM_COST_MICROCENTS=0       # custo por chamada (0 = desconhecido)
+   # ANTHROPIC_API_KEY=<só com COPY_PROVIDER=anthropic>
    # R2_* e RESEND_* quando for gerar/renderizar/enviar email
    # CORS_ORIGINS=<URL do Vercel>  (preenche no passo 4)
    ```
+
+   ⚠️ **Defina `COPY_PROVIDER` explicitamente.** Sem a var, o serviço cai no
+   default (`fal`) — o que troca de provedor de copy em silêncio num deploy
+   antigo que só tinha `ANTHROPIC_API_KEY` configurada.
+
 3. Em **Settings → Networking**, gere um **domínio público**. Anote a URL
    (ex.: `https://cognito-backend-production.up.railway.app`).
 4. **Migrations + seed** (uma vez). Do seu PC, apontando para o Neon:
@@ -100,8 +110,12 @@ Pronto — abra a URL do Vercel de qualquer máquina. 🎉
    Como conferir que o worker é worker mesmo: nos logs deve aparecer
    `🛠️  workers iniciados: generate-creative, render-image, send-email`.
    Se aparecer `🚀 cognito-backend ouvindo em…`, ele está rodando a API.
-3. **Chaves**: `ANTHROPIC_API_KEY` (copy), `FAL_API_KEY` com **saldo** (Flux),
-   `R2_*` (guardar o PNG).
+
+3. **Chaves**: `FAL_API_KEY` com **saldo** — cobre a copy (`fal-ai/any-llm`,
+   default `COPY_PROVIDER=fal`) **e** o fundo (Flux) — mais `R2_*` (guardar o
+   PNG). `ANTHROPIC_API_KEY` só é necessária com `COPY_PROVIDER=anthropic` —
+   ou, com qualquer provedor, se a `FAL_API_KEY` estiver ausente e você usar a
+   análise de referência de layout, que então cai no Claude vision.
 4. Garanta `REDIS_URL` igual nos dois serviços (API e worker).
 
 ## Migrations futuras

@@ -18,6 +18,62 @@ Formato de cada entrada:
 
 ---
 
+## 2026-08-03 21:40 — Provedor de copy `fal` (any-llm) vira o default; Anthropic vira fallback
+
+- Status: ✅ aprovado (com 1 pendência que só o Victor pode fechar)
+- Objetivo do Victor: parar de pagar a Anthropic pela copy e centralizar o custo
+  de IA na fal.ai, onde o Flux já é pago. Escopo fechado, contrato do
+  `fal-ai/any-llm` já validado por ele (OpenAPI oficial + 1 chamada real, HTTP
+  200) — os subagentes foram proibidos de re-pesquisar ou chamar a API.
+- Implementado: `COPY_PROVIDER: z.enum(['fal','anthropic','openai']).default('fal')`;
+  `generateText`/`generateVisionText` em `config/fal.ts` (`fal-ai/any-llm` e
+  `/vision`); `generateCopyFal` reusando `buildSystemText` + `buildUserPrompt` +
+  a mesma `parseAndValidate`; `model` no formato `fal:<modelo>`; visão da análise
+  de referência por URL pública (sem base64). O caminho anthropic ficou
+  **byte-idêntico**, com prompt caching, conforme pedido.
+- **Custo sem tokens**: o any-llm cobra por request e não devolve contagem de
+  tokens, então `estimateCostMicrocents` daria 0. `GenerationResult` ganhou
+  `costMicrocents?: number | null` e `recordAiUsage` aceita o override.
+- Achados que **bloqueavam** o merge (rodada 1 de revisão):
+  1. Os testes novos **discavam para a rede real**: o bloco "provedor fal" não
+     forçava o provedor, dependia do default do zod. O reviewer reproduziu com
+     `COPY_PROVIDER=anthropic` → `401` de `api.anthropic.com`. Corrigido fixando
+     o provedor no `vitest.config.ts` + mock do `@anthropic-ai/sdk`.
+  2. `costMicrocents: 0` gravado em toda geração tornava "custo desconhecido"
+     indistinguível de "grátis" — `SUM()` reportaria R$ 0,00 de IA para sempre.
+     Vira `null` (a coluna já é `Int?`). O `??` teve de virar ternário explícito:
+     `null ?? estimate(...)` com tokens zerados devolvia `0` de novo.
+  3. `partial: true` (resposta truncada, HTTP 200) era ignorado e explodia
+     depois como "JSON inválido", culpando o modelo em vez do `max_tokens`.
+- Achados da rodada 2: docs de deploy ainda mandavam configurar a copy na
+  Anthropic (o Railway trocaria de provedor **em silêncio**, já que a var não
+  existe lá); o default `fal` não tinha teste (mudá-lo deixava a suíte verde);
+  e a análise de referência mandava para o Claude tudo que não fosse `fal`,
+  inclusive `openai` — contradizendo o que os docs prometiam.
+- Arquivos: `config/env.ts`, `config/fal.ts`, `generation/generation.service.ts`,
+  `usage/usage.service.ts`, `brand-books/analyze-reference.ts`,
+  `brand-books/brand-books.routes.ts`, `brand-books/layout.ts`,
+  `workers/generate-creative.ts`, `scripts/preview-creative.ts`,
+  `tests/generation.test.ts`, `tests/env.test.ts` (novo), `vitest.config.ts`,
+  `.env.example`, `README.md`, `CLAUDE.md`, `docs/{LOCAL,RUNBOOK,DEPLOY}.md`.
+- Revisão: 3 passadas do `code-reviewer` (2 de auditoria + 1 de verificação).
+  Todos os achados corrigidos; veredito final **sem bloqueador**.
+- **Pendente para o Victor**: (a) `CLAUDE.md:72` ("Estado atual") ainda diz
+  "Geração de copy (Claude)" — o `backend-dev` se recusou a editar arquivo de
+  instrução por ordem de agente, e eu mantive a recusa; (b)
+  `FAL_LLM_COST_MICROCENTS=0` até ele ler o preço real no dashboard do fal —
+  até lá o `UsageLog` grava `null` (não medido), de propósito.
+- Nota de processo: durante a verificação o `code-reviewer` rodou
+  `git checkout -- src/config/env.ts` para desfazer um teste e apagou o diff
+  inteiro do arquivo; restaurou e provou a identidade por `git hash-object`.
+  Conferi o `git diff` do `env.ts` por conta própria — íntegro.
+- Rodadas de correção: 2 (o limite)
+- typecheck/lint: passou · testes: **93 (+3), 10 arquivos** · `COPY_PROVIDER=anthropic
+  npx vitest run tests/generation.test.ts` → 12 passando, sem rede
+- Não commitado, a pedido do Victor: a árvore ficou pronta para ele revisar.
+
+---
+
 ## 2026-07-28 22:50 — Revisão das duas features + correção dos achados
 
 - Status: ✅ aprovado com correções aplicadas
