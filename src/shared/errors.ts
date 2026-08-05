@@ -13,6 +13,7 @@ export type ErrorCode =
   | 'CONFLICT'
   | 'QUOTA_EXCEEDED'
   | 'RATE_LIMITED'
+  | 'SERVICE_UNAVAILABLE'
   | 'INTERNAL';
 
 export abstract class AppError extends Error {
@@ -88,6 +89,20 @@ export class QuotaExceededError extends AppError {
 export class RateLimitError extends AppError {
   readonly statusCode = 429;
   readonly code = 'RATE_LIMITED';
+}
+
+/**
+ * Dependência de infra fora do ar (ex.: Redis/fila). É operacional: o cliente
+ * pode tentar de novo. Existe para o front distinguir "a fila caiu" de
+ * "bug no servidor" (INTERNAL), que exigem reações diferentes.
+ */
+export class ServiceUnavailableError extends AppError {
+  readonly statusCode = 503;
+  readonly code = 'SERVICE_UNAVAILABLE';
+
+  constructor(message = 'Serviço temporariamente indisponível.', details?: unknown) {
+    super(message, details);
+  }
 }
 
 export function isAppError(err: unknown): err is AppError {

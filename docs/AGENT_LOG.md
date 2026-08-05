@@ -18,6 +18,86 @@ Formato de cada entrada:
 
 ---
 
+## 2026-08-04 21:40 — Geração 500 em produção: rollback do enqueue, query da REDIS_URL e readiness que mentia
+
+- Status: ✅ aprovado
+- Contexto: no app publicado, `POST /briefings/:id/generate` devolveu 500 e o
+  briefing `cmsfaisqc0001pb01s4uv6yxv` (org_demo) ficou preso em `GENERATING`
+  com `errorMessage: null`, enquanto `/health/ready` reportava Redis verde.
+- **A causa raiz mudou no meio da tarefa.** A hipótese inicial era o `family=0`
+  ausente (private networking IPv6-only do Railway). A repro real do Victor
+  mostrou outra coisa: a `REDIS_URL` é **Upstash com TLS** e a **cota do free
+  tier estourou** — `ERR max requests limit exceeded. Limit: 500000`. O Redis
+  respondia `PING`/`INFO` mas rejeitava os EVALSHA do BullMQ; por isso o
+  readiness verde com o enqueue em 500. Os docs foram reescritos para não
+  atribuir o incidente ao `family=0`.
+- Implementado (3 frentes):
+  1. `redisConnectionOptions()` propaga `family`/`db`/`connectTimeout` da query
+     string da `REDIS_URL` para o BullMQ (antes só o client global honrava a
+     query, porque recebe a URL inteira). Filtro `Number.isInteger`, para
+     `family=0` não morrer de falsy; inválidos são descartados com warn.
+     Interface exportada `RedisConnectionOptions` — segue objeto de opções,
+     nunca instância ioredis. Vale como **robustez/portabilidade**, não como a
+     causa deste incidente.
+  2. Rollback do enqueue em `generateBriefing`: falha ao enfileirar deixa o
+     briefing em `FAILED` com `failedAt` e a **mensagem real** do Redis em
+     `errorMessage`, marca o `Job` via `markJobFailed`, e propaga um
+     `ServiceUnavailableError` novo (503, code `SERVICE_UNAVAILABLE` na união
+     `ErrorCode`) para o front distinguir "fila fora" de bug. As duas escritas
+     do rollback ficaram em `try/catch` independentes e nenhuma mascara o erro
+     original.
+  3. `checkRedis()` deixou de ser só `PING` (que o Upstash respondia mesmo com a
+     cota estourada). Agora faz `SET cognito:health:probe … PX 30000` e devolve
+     `RedisHealth { ok, responds, acceptsWrites, error? }`; 1 comando no caminho
+     feliz, `PING` extra só na falha, cache de 15s + dedupe de chamadas
+     concorrentes. `/health/ready` ganhou schema zod (200 e 503) e expõe o
+     degradado.
+- Achados da rodada 1 de revisão (ambos CONFIRMED, ambos corrigidos):
+  1. O rollback **não limpava o `idempotencyKey`** gravado instantes antes. O
+     cliente que retentasse com a mesma chave — o comportamento canônico, ainda
+     mais depois de um 503 dizendo "tente novamente" — caía no replay e recebia
+     **200 com o job morto**, `idempotentReplay: true`, sem reenfileirar. O
+     briefing ficava `FAILED` para sempre. Corrigido com `idempotencyKey: null`
+     no rollback (campo já `String?`; NULLs são distintos na unique composta, sem
+     migration).
+  2. O comentário do cache e o `DEPLOY.md` afirmavam que "o healthcheck do
+     Railway bate no `/health/ready` em loop" — falso: o `railway.json` aponta
+     para `/health` (liveness, não toca Redis). Reescrito como cache defensivo,
+     mais o aviso de **não** apontar o `healthcheckPath` para o readiness (cota
+     estourada derrubaria a API inteira) e o registro de que
+     `jobs.service.ts:74` curto-circuita pelo `isProduction` — em produção quem
+     detecta a próxima cota estourada é o rollback + 503, não o readiness.
+- Achado da rodada 2: aritmética errada por 2× no `DEPLOY.md` (~170 mil/mês é
+  **por processo**, não "com dois processos"; e só a API expõe HTTP, o worker não
+  tem rota de health). Corrigido.
+- Documentado sem implementar, por decisão de infra ser do Victor: o free tier
+  do Upstash **não sustenta o BullMQ** rodando o mês inteiro (heartbeat,
+  stalled-check e polling em API + worker, 24/7, queimam os 500 mil comandos).
+  Saídas registradas: plugin Redis do Railway (aí o `?family=0` vira
+  obrigatório), Upstash pago, ou afrouxar os intervalos do BullMQ. **Nenhum
+  tuning de intervalo foi mexido** — `config/queue.ts` intocado.
+- Arquivos: `src/config/redis.ts`, `src/modules/briefings/briefings.service.ts`,
+  `src/modules/health/health.routes.ts`, `src/modules/jobs/jobs.service.ts`,
+  `src/shared/errors.ts`, `docs/{DEPLOY,RUNBOOK,FRONTEND}.md`,
+  `tests/briefings-generate.test.ts` (novo), `tests/redis-connection.test.ts`
+  (novo), `tests/redis-health.test.ts` (novo), `tests/health-routes.test.ts`
+  (novo). Sem mudança de schema Prisma, sem migration.
+- Revisão: 2 passadas do `code-reviewer`, que rodou os comandos por conta
+  própria e validou por mutação (removendo o `idempotencyKey: null`, 2 testes
+  falham). Todos os achados corrigidos; **nenhum pendente**.
+- Rodadas de correção: 2
+- typecheck/lint: passou (`tsc --noEmit` limpo, `eslint` limpo, 14 arquivos /
+  124 testes passando, `prettier --check` limpo)
+- Pendências fora do escopo, registradas pelo reviewer: (a) `createJobRecord`
+  falhando entre o `updateMany` de `GENERATING` e o enqueue deixa a mesma classe
+  de briefing preso (pré-existente); (b) `checkDatabase` em `config/prisma.ts`
+  ainda usa `setTimeout` sem `clearTimeout`; (c) o `cognito-frontend` precisa de
+  um commit para tratar o code `SERVICE_UNAVAILABLE` — hoje cai no ramo genérico
+  de erro. **Não commitado**: mudanças deixadas no working tree a pedido do
+  Victor.
+
+---
+
 ## 2026-08-03 21:40 — Provedor de copy `fal` (any-llm) vira o default; Anthropic vira fallback
 
 - Status: ✅ aprovado (com 1 pendência que só o Victor pode fechar)

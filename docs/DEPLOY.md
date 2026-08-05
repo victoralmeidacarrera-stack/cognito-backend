@@ -91,6 +91,33 @@ Pronto — abra a URL do Vercel de qualquer máquina. 🎉
 
 1. **Redis**: Upstash (free) → `REDIS_URL=rediss://...` (eviction = `noeviction`),
    ou plugin Redis no Railway.
+
+   ⚠️ **Se usar o Redis interno do Railway, a `REDIS_URL` precisa de `?family=0`**
+   — nos **dois** serviços (API **e** worker):
+
+   ```
+   REDIS_URL=redis://default:<senha>@<nome>.redis.railway.internal:6379?family=0
+   ```
+
+   O private networking do Railway é **IPv6-only** e o ioredis, sem `family=0`,
+   só tenta o registro A (IPv4) e nunca conecta. O `redisConnectionOptions()`
+   (o que o BullMQ recebe) remonta a URL peça por peça e propaga `family`, `db`
+   e `connectTimeout` da query string — assim o client global e o BullMQ ficam
+   com a mesma configuração. Isso é **requisito do Redis interno do Railway**,
+   não a explicação do incidente de 03/08/2026 (ver abaixo).
+
+   Formatos que **não** precisam de `family=0`:
+
+   - **Endpoint público do Railway** (TCP proxy, IPv4):
+     `redis://default:<senha>@<algo>.proxy.rlwy.net:<porta>` — sai da rede
+     interna (conta banda), mas funciona sem tuning.
+   - **Upstash**: `rediss://default:<senha>@<host>.upstash.io:6379` — o
+     protocolo `rediss:` já liga o TLS sozinho.
+
+   ⚠️ Antes de escolher o Upstash free, leia
+   **["O free tier do Upstash não sustenta o BullMQ"](#o-free-tier-do-upstash-não-sustenta-o-bullmq)**
+   no fim desta seção.
+
 2. **Worker**: no Railway, **+ New Service** apontando pro mesmo repo
    `cognito-backend`. (O Dockerfile já instala o Chromium pro Puppeteer.)
 
@@ -116,7 +143,102 @@ Pronto — abra a URL do Vercel de qualquer máquina. 🎉
    PNG). `ANTHROPIC_API_KEY` só é necessária com `COPY_PROVIDER=anthropic` —
    ou, com qualquer provedor, se a `FAL_API_KEY` estiver ausente e você usar a
    análise de referência de layout, que então cai no Claude vision.
-4. Garanta `REDIS_URL` igual nos dois serviços (API e worker).
+4. Garanta `REDIS_URL` **igual** nos dois serviços (API e worker) — inclusive a
+   query string (`?family=0` no Redis interno). Um dos dois sem ela e metade do
+   pipeline fica muda.
+
+## O free tier do Upstash não sustenta o BullMQ
+
+**Incidente de 03/08/2026.** `POST /briefings/:id/generate` passou a devolver
+**500** com `/health/ready` **verde**. Causa real, reproduzida contra o Redis de
+produção (`rediss://…upstash.io:6379`):
+
+```
+PING (instância direta)  → ERR max requests limit exceeded. Limit: 500000, Usage: 500000
+INFO server              → respondia normalmente (redis_version:8.2.0)
+CONFIG GET maxmemory-policy → ERR max requests limit exceeded…
+queue.add (BullMQ)       → ReplyError: ERR max requests limit exceeded.
+```
+
+Ou seja: **a cota mensal de 500 mil comandos do free tier do Upstash estourou**.
+Rede, TLS, credencial e `maxmemory-policy` (`noeviction`) estavam corretos — e
+`family=0` não tem nada a ver com este deploy (o Upstash é público e resolve em
+IPv4).
+
+Por que o readiness não pegou: **com a cota estourada o Upstash trata os
+comandos de forma desigual**. Às 23:36 o `/health/ready` estava verde porque
+o `PING` ainda passava, enquanto o `queue.add` do BullMQ já falhava; na
+reprodução, mais tarde, até o `PING` foi recusado — mas o `INFO` continuava
+respondendo. Moral: **`PING` nunca foi prova de que a fila funciona**.
+
+**Por que a cota some sozinha: BullMQ ocioso não é gratuito.** API e worker
+ficam 24/7 fazendo heartbeat, `stalled-check`, polling de delayed jobs e
+manutenção de fila — mesmo sem nenhum criativo sendo gerado. Dois processos
+rodando o mês inteiro queimam as 500 mil requisições sem que ninguém use o
+produto. **Não conte com o free tier do Upstash para manter a fila de pé.**
+
+Saídas (decisão de infra, ainda em aberto):
+
+1. **Plugin Redis do Railway** — sem cota por comando; lembre do `?family=0`.
+2. **Upstash pago** (pay-as-you-go / plano fixo) — mantém o setup atual.
+3. **Afrouxar os intervalos do BullMQ** (stalled-check, drain delay, quantidade
+   de workers/conexões) — reduz o consumo, não elimina. **Não implementado** —
+   nenhum tuning foi feito no código.
+
+### O que mudou no código depois do incidente
+
+- **`/health/ready` não confia mais em `PING`.** O check faz uma **escrita com
+  TTL curto** (`SET cognito:health:probe <ts> PX 30000`), que é o que a fila
+  realmente precisa. Custo: **1 comando** no caminho feliz; só quando a escrita
+  falha ele gasta um `PING` extra para separar "servidor mudo" de "servidor
+  responde mas recusa escrita". O resultado fica em **cache de 15s**, e o
+  motivo é **defensivo, não uma otimização de algo que já acontece**: hoje
+  ninguém pola o `/health/ready` — o `healthcheckPath` do `railway.json` é
+  `/health` (liveness, que não toca no Redis) e o frontend não consulta o
+  readiness. O endpoint existe para inspeção manual e para um eventual monitor
+  externo; **se** alguém ligar um monitor a cada 5s, o cache segura o custo em
+  ~1 comando a cada 15s por processo que atenda o probe (~170 mil/mês por
+  processo; hoje só a API expõe HTTP — o worker não tem rota de health) em vez de
+  1 comando por requisição. Resposta degradada:
+
+  ```json
+  {
+    "status": "degraded",
+    "checks": { "database": true, "redis": false },
+    "redis": {
+      "responds": true,
+      "acceptsWrites": false,
+      "error": "ERR max requests limit exceeded. Limit: 500000, Usage: 500000"
+    }
+  }
+  ```
+
+  `responds: true` + `acceptsWrites: false` = **cota estourada, OOM com
+  `noeviction` ou réplica read-only**. `checks.redis` continua booleano (contrato
+  antigo), mas agora significa "a fila consegue operar".
+
+  ⚠️ **Não aponte o `healthcheckPath` do Railway para `/health/ready`.** Ele
+  precisa continuar em `/health`: com o readiness no healthcheck, uma cota
+  estourada no Redis derrubaria o **deploy inteiro** da API — inclusive as rotas
+  que não dependem da fila (login, listagens, download de criativo já pronto).
+  Readiness é sinal para humano/monitor, não gatilho de restart.
+
+  ⚠️ **O probe de escrita quase não roda em produção.** O outro call site do
+  `checkRedis()` é o fallback inline de dev em `src/modules/jobs/jobs.service.ts`
+  (`if (isProduction || (await checkRedis(800)).ok)`), que **curto-circuita pelo
+  `isProduction`** e nem chega a chamar o check. Ou seja: em produção o probe só
+  roda quando alguém abre o `/health/ready` na mão. Quem detecta a próxima cota
+  estourada é o **rollback + 503** do item abaixo (que dispara na hora do
+  enqueue real), não o readiness — não confie no readiness como alarme
+  automático enquanto não houver um monitor externo apontado para ele.
+
+- **Nenhum briefing fica preso em `GENERATING`.** Falha de enqueue vira `FAILED`
+  com a **mensagem crua** de quem recusou em `errorMessage` (ex.:
+  `ERR max requests limit exceeded…`), e a rota devolve **503 `SERVICE_UNAVAILABLE`**
+  (retentável) em vez de 500. O rollback também **limpa o `idempotencyKey`** do
+  briefing: a tentativa não chegou a existir, então o retry com a mesma
+  `Idempotency-Key` (o que o 503 pede) volta a enfileirar de verdade em vez de
+  bater no replay idempotente e receber 200 com o job morto.
 
 ## Migrations futuras
 

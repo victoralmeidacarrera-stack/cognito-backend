@@ -8,7 +8,10 @@ client tipado a partir dele (ex.: `openapi-typescript`, `orval`).
 
 - Base URL (dev): `http://localhost:3333`
 - Prefixo da API: `/api/v1`
-- Health: `GET /health` (liveness) e `GET /health/ready` (DB + Redis)
+- Health: `GET /health` (liveness) e `GET /health/ready` (DB + fila; 200 =
+  `ready`, 503 = `degraded`, com `checks.database`/`checks.redis` booleanos e um
+  bloco `redis: { responds, acceptsWrites, error? }` — `responds: true` com
+  `acceptsWrites: false` = Redis no ar recusando escrita, a fila não anda)
 - Docs: `GET /docs`
 
 ## Autenticação
@@ -52,7 +55,9 @@ Use isso para montar o header (nome da org, plano) e mostrar a quota.
   ```
   Códigos: `VALIDATION_ERROR` (400), `UNAUTHORIZED` (401), `QUOTA_EXCEEDED` (402),
   `FORBIDDEN` (403), `NOT_FOUND` (404), `CONFLICT` (409), `RATE_LIMITED` (429),
-  `DOMAIN_ERROR` (422), `INTERNAL` (500).
+  `DOMAIN_ERROR` (422), `SERVICE_UNAVAILABLE` (503), `INTERNAL` (500).
+  `SERVICE_UNAVAILABLE` = dependência de infra fora do ar (ex.: a fila não
+  aceitou o job); é retentável, diferente de `INTERNAL`.
 - **Listas paginadas:** `{ items: [...], total, page, perPage }`.
   Query: `?page=1&perPage=20`.
 - **Rate limit:** 300 req/min por IP (headers `x-ratelimit-*`).

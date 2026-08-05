@@ -48,6 +48,15 @@ REDIS_URL=redis://localhost:6379
 - **Upstash** (Redis): https://upstash.com → cria database Redis → copia a URL
   `rediss://...`. Em "Eviction" deixe **noeviction** (exigência do BullMQ).
 
+> ⚠️ **O free tier do Upstash (500 mil comandos/mês) não sustenta o BullMQ
+> rodando o mês inteiro.** API + worker consomem comandos 24/7 mesmo ociosos
+> (heartbeat, stalled-check, polling de delayed jobs). Foi assim que a geração
+> caiu em 03/08/2026: cota estourada → `ERR max requests limit exceeded` em
+> todo `queue.add`, com o `/health/ready` ainda verde porque
+> `PING` continuava passando. Saídas: plugin Redis do Railway (exige
+> `?family=0` na URL), Upstash pago, ou afrouxar os intervalos do BullMQ
+> (não implementado). Detalhes em `docs/DEPLOY.md`.
+
 ```
 DATABASE_URL=postgresql://USER:PASS@HOST/db?sslmode=require
 REDIS_URL=rediss://default:PASS@HOST:6379
@@ -187,7 +196,22 @@ npm run dev       # API   → http://localhost:3333
 npm run worker    # workers BullMQ (geração, render, email)
 ```
 
-`GET /health/ready` deve responder `{"status":"ready","checks":{"database":true,"redis":true}}`.
+`GET /health/ready` deve responder:
+
+```json
+{
+  "status": "ready",
+  "checks": { "database": true, "redis": true },
+  "redis": { "responds": true, "acceptsWrites": true },
+  "timestamp": "..."
+}
+```
+
+O check do Redis é uma **escrita** com TTL curto (1 comando, cache de 15s), não
+um `PING`: um Redis que responde mas recusa escrita (cota estourada, OOM com
+`noeviction`, réplica read-only) não roda a fila e precisa aparecer como
+`degraded` — `responds: true` com `acceptsWrites: false` e a mensagem do
+servidor em `redis.error`.
 
 ---
 

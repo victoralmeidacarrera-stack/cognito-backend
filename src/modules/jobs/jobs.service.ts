@@ -70,7 +70,8 @@ async function enqueueOrRunInline(
   enqueue: () => Promise<void>,
   runInline: () => Promise<void>,
 ): Promise<void> {
-  if (isProduction || (await checkRedis(800))) {
+  // `.ok` = responde E aceita escrita; um Redis que só faz PING não roda a fila.
+  if (isProduction || (await checkRedis(800)).ok) {
     await enqueue();
     return;
   }
